@@ -2,9 +2,26 @@
 name = "graph-context"
 version = "0.1.0"
 description = "Graph Context component for Knowledge Graph Assisted Research IDE"
-authors = ["Your Name <your.email@example.com>"]
+authors = [
+    { name = "Beanone Team", email = "beanone@example.com" }
+]
 readme = "README.md"
 packages = [{include = "graph_context", from = "src"}]
+license = "MIT"
+homepage = "https://github.com/beanone-agent/graph-context"
+repository = "https://github.com/beanone-agent/graph-context"
+keywords = ["knowledge graph", "research", "ide", "context", "graph"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 
 [tool.poetry.dependencies]
 python = "^3.10"
