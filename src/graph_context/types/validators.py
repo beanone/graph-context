@@ -7,6 +7,7 @@ their defined types and constraints.
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Type, Union
 from uuid import UUID
+import math
 
 from ..exceptions import ValidationError
 from .type_base import PropertyDefinition, PropertyType
@@ -95,6 +96,19 @@ def validate_number(
                 constraint="type"
             )
         value = float(value)
+        # Validate special float values
+        if math.isnan(value):
+            raise ValidationError(
+                "NaN values are not allowed",
+                value=value,
+                constraint="type"
+            )
+        if math.isinf(value):
+            raise ValidationError(
+                "Infinite values are not allowed",
+                value=value,
+                constraint="type"
+            )
 
     if constraints:
         if "minimum" in constraints and value < constraints["minimum"]:
@@ -313,41 +327,54 @@ def validate_dict(
             constraint="type"
         )
 
-    if constraints and "properties" in constraints:
-        properties = constraints["properties"]
-        for prop_name, prop_def in properties.items():
-            if prop_def.get("required", False) and prop_name not in value:
+    if constraints:
+        # Check for additional properties if specified
+        if constraints.get("additional_properties") is False:
+            allowed_props = set(constraints.get("properties", {}).keys())
+            actual_props = set(value.keys())
+            extra_props = actual_props - allowed_props
+            if extra_props:
                 raise ValidationError(
-                    f"required constraint: Property '{prop_name}' is missing",
-                    field=prop_name,
-                    constraint="required"
+                    f"Additional properties are not allowed: {', '.join(extra_props)}",
+                    value=value,
+                    constraint="additional_properties"
                 )
 
-            if prop_name in value:
-                prop_type = prop_def["type"]
-                prop_constraints = prop_def.get("constraints")
-                try:
-                    if prop_type == PropertyType.STRING:
-                        value[prop_name] = validate_string(value[prop_name], prop_constraints)
-                    elif prop_type in (PropertyType.INTEGER, PropertyType.FLOAT):
-                        value[prop_name] = validate_number(value[prop_name], prop_type, prop_constraints)
-                    elif prop_type == PropertyType.BOOLEAN:
-                        value[prop_name] = validate_boolean(value[prop_name])
-                    elif prop_type == PropertyType.DATETIME:
-                        value[prop_name] = validate_datetime(value[prop_name], prop_constraints)
-                    elif prop_type == PropertyType.UUID:
-                        value[prop_name] = validate_uuid(value[prop_name])
-                    elif prop_type == PropertyType.LIST:
-                        value[prop_name] = validate_list(value[prop_name], prop_constraints)
-                    elif prop_type == PropertyType.DICT:
-                        value[prop_name] = validate_dict(value[prop_name], prop_constraints)
-                except ValidationError as e:
+        if "properties" in constraints:
+            properties = constraints["properties"]
+            for prop_name, prop_def in properties.items():
+                if prop_def.get("required", False) and prop_name not in value:
                     raise ValidationError(
-                        f"Invalid value for property '{prop_name}': {str(e)}",
+                        f"required constraint: Property '{prop_name}' is missing",
                         field=prop_name,
-                        value=value[prop_name],
-                        constraint=e.details.get("constraint")
-                    ) from e
+                        constraint="required"
+                    )
+
+                if prop_name in value:
+                    prop_type = prop_def["type"]
+                    prop_constraints = prop_def.get("constraints")
+                    try:
+                        if prop_type == PropertyType.STRING:
+                            value[prop_name] = validate_string(value[prop_name], prop_constraints)
+                        elif prop_type in (PropertyType.INTEGER, PropertyType.FLOAT):
+                            value[prop_name] = validate_number(value[prop_name], prop_type, prop_constraints)
+                        elif prop_type == PropertyType.BOOLEAN:
+                            value[prop_name] = validate_boolean(value[prop_name])
+                        elif prop_type == PropertyType.DATETIME:
+                            value[prop_name] = validate_datetime(value[prop_name], prop_constraints)
+                        elif prop_type == PropertyType.UUID:
+                            value[prop_name] = validate_uuid(value[prop_name])
+                        elif prop_type == PropertyType.LIST:
+                            value[prop_name] = validate_list(value[prop_name], prop_constraints)
+                        elif prop_type == PropertyType.DICT:
+                            value[prop_name] = validate_dict(value[prop_name], prop_constraints)
+                    except ValidationError as e:
+                        raise ValidationError(
+                            f"Invalid value for property '{prop_name}': {str(e)}",
+                            field=prop_name,
+                            value=value[prop_name],
+                            constraint=e.details.get("constraint")
+                        ) from e
 
     return value
 
