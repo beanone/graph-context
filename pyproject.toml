@@ -2,7 +2,7 @@
 name = "graph-context"
 version = "0.1.0"
 description = "Graph Context component for Knowledge Graph Assisted Research IDE"
-authors = ["Beanone Team <beanone@example.com>"]
+authors = ["Beanone Team", "beanone@example.com"]
 readme = "README.md"
 packages = [{include = "graph_context", from = "src"}]
 license = "MIT"
