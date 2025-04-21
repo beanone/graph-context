@@ -1,0 +1,6 @@
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-asyncio>=0.21.1
+coverage>=7.3.2
+codecov>=2.1.13
+ruff>=0.1.6  # For code formatting and linting in CI
