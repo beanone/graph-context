@@ -1,0 +1,39 @@
+[tool.poetry]
+name = "graph-context"
+version = "0.1.0"
+description = "Graph Context component for Knowledge Graph Assisted Research IDE"
+authors = ["Your Name <your.email@example.com>"]
+readme = "README.md"
+packages = [{include = "graph_context", from = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+pydantic = "^2.5.2"
+typing-extensions = "^4.8.0"
+asyncio = "^3.4.3"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.3"
+pytest-asyncio = "^0.21.1"
+pytest-cov = "^4.1.0"
+hypothesis = "^6.87.1"
+ruff = "^0.1.6"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+select = ["E", "F", "B", "I", "N", "UP", "PL", "RUF"]
+ignore = []
+
+[tool.ruff.isort]
+known-first-party = ["graph_context"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "--cov=graph_context --cov-report=term-missing"
