@@ -1,5 +1,3 @@
-# Graph Context
-
 <p align="center">
   <img src="docs/assets/logos/banner.svg" alt="Graph Context Banner" width="100%">
 </p>
