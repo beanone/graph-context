@@ -4,10 +4,10 @@ Type validation logic for the graph-context module.
 This module provides validation functions for checking property values against
 their defined types and constraints.
 """
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Type, Union
-from uuid import UUID
 import math
+from datetime import datetime
+from typing import Any, Optional, Union
+from uuid import UUID
 
 from ..exceptions import ValidationError
 from .type_base import PropertyDefinition, PropertyType
@@ -15,7 +15,7 @@ from .type_base import PropertyDefinition, PropertyType
 
 def validate_string(
     value: Any,
-    constraints: Optional[Dict[str, Any]] = None
+    constraints: Optional[dict[str, Any]] = None
 ) -> str:
     """
     Validate a string value against its constraints.
@@ -65,7 +65,7 @@ def validate_string(
 def validate_number(
     value: Any,
     property_type: PropertyType,
-    constraints: Optional[Dict[str, Any]] = None
+    constraints: Optional[dict[str, Any]] = None
 ) -> Union[int, float]:
     """
     Validate a numeric value against its constraints.
@@ -152,7 +152,7 @@ def validate_boolean(value: Any) -> bool:
 
 def validate_datetime(
     value: Any,
-    constraints: Optional[Dict[str, Any]] = None
+    constraints: Optional[dict[str, Any]] = None
 ) -> datetime:
     """
     Validate a datetime value against its constraints.
@@ -237,8 +237,8 @@ def validate_uuid(value: Any) -> UUID:
 
 def validate_list(
     value: Any,
-    constraints: Optional[Dict[str, Any]] = None
-) -> List[Any]:
+    constraints: Optional[dict[str, Any]] = None
+) -> list[Any]:
     """
     Validate a list value against its constraints.
 
@@ -295,7 +295,7 @@ def validate_list(
                         value[i] = validate_dict(item, item_constraints)
                 except ValidationError as e:
                     raise ValidationError(
-                        f"Invalid item at index {i}: {str(e)}",
+                        f"Invalid item at index {i}: {e!s}",
                         value=item,
                         constraint=e.details.get("constraint")
                     ) from e
@@ -305,8 +305,8 @@ def validate_list(
 
 def validate_dict(
     value: Any,
-    constraints: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
+    constraints: Optional[dict[str, Any]] = None
+) -> dict[str, Any]:
     """
     Validate a dictionary value against its constraints.
 
@@ -370,7 +370,7 @@ def validate_dict(
                             value[prop_name] = validate_dict(value[prop_name], prop_constraints)
                     except ValidationError as e:
                         raise ValidationError(
-                            f"Invalid value for property '{prop_name}': {str(e)}",
+                            f"Invalid value for property '{prop_name}': {e!s}",
                             field=prop_name,
                             value=value[prop_name],
                             constraint=e.details.get("constraint")

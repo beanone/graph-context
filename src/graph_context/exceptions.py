@@ -4,13 +4,13 @@ Exceptions for the graph-context module.
 This module defines all custom exceptions that can be raised by the graph-context
 component during its operations.
 """
-from typing import Any, Optional
+from typing import Any
 
 
 class GraphContextError(Exception):
     """Base exception for all graph context errors."""
 
-    def __init__(self, message: str, details: Optional[dict[str, Any]] = None) -> None:
+    def __init__(self, message: str, details: dict[str, Any] | None = None) -> None:
         """
         Initialize the exception.
 
@@ -25,7 +25,7 @@ class GraphContextError(Exception):
 class EntityNotFoundError(GraphContextError):
     """Raised when an entity cannot be found."""
 
-    def __init__(self, entity_id: str, entity_type: Optional[str] = None) -> None:
+    def __init__(self, entity_id: str, entity_type: str | None = None) -> None:
         """
         Initialize the exception.
 
@@ -66,9 +66,9 @@ class RelationNotFoundError(GraphContextError):
     def __init__(
         self,
         relation_id: str,
-        relation_type: Optional[str] = None,
-        from_entity: Optional[str] = None,
-        to_entity: Optional[str] = None
+        relation_type: str | None = None,
+        from_entity: str | None = None,
+        to_entity: str | None = None
     ) -> None:
         """
         Initialize the exception.
@@ -117,9 +117,9 @@ class ValidationError(GraphContextError):
     def __init__(
         self,
         message: str,
-        field: Optional[str] = None,
-        value: Optional[Any] = None,
-        constraint: Optional[str] = None
+        field: str | None = None,
+        value: Any | None = None,
+        constraint: str | None = None
     ) -> None:
         """
         Initialize the exception.
@@ -144,7 +144,7 @@ class ValidationError(GraphContextError):
 class DuplicateEntityError(GraphContextError):
     """Raised when attempting to create an entity that already exists."""
 
-    def __init__(self, entity_id: str, entity_type: Optional[str] = None) -> None:
+    def __init__(self, entity_id: str, entity_type: str | None = None) -> None:
         """
         Initialize the exception.
 
@@ -166,7 +166,7 @@ class DuplicateEntityError(GraphContextError):
 class DuplicateRelationError(GraphContextError):
     """Raised when attempting to create a relation that already exists."""
 
-    def __init__(self, relation_id: str, relation_type: Optional[str] = None) -> None:
+    def __init__(self, relation_id: str, relation_type: str | None = None) -> None:
         """
         Initialize the exception.
 
@@ -191,16 +191,16 @@ class SchemaError(GraphContextError):
     def __init__(
         self,
         message: str,
-        schema_type: Optional[str] = None,
-        field: Optional[str] = None
+        schema_type: str | None = None,
+        field: str | None = None
     ) -> None:
         """
         Initialize the exception.
 
         Args:
             message: Description of the schema error
-            schema_type: Optional type name in the schema
-            field: Optional field name that caused the error
+            schema_type: Optional name of the type that caused the error
+            field: Optional name of the field that caused the error
         """
         details = {}
         if schema_type:
@@ -217,16 +217,16 @@ class TransactionError(GraphContextError):
     def __init__(
         self,
         message: str,
-        operation: Optional[str] = None,
-        state: Optional[str] = None
+        operation: str | None = None,
+        state: str | None = None
     ) -> None:
         """
         Initialize the exception.
 
         Args:
             message: Description of the transaction error
-            operation: Optional name of the operation that failed
-            state: Optional state of the transaction when the error occurred
+            operation: Optional name of the operation that caused the error
+            state: Optional description of the transaction state
         """
         details = {}
         if operation:
@@ -243,7 +243,7 @@ class QueryError(GraphContextError):
     def __init__(
         self,
         message: str,
-        query_spec: Optional[dict[str, Any]] = None
+        query_spec: dict[str, Any] | None = None
     ) -> None:
         """
         Initialize the exception.
@@ -252,29 +252,25 @@ class QueryError(GraphContextError):
             message: Description of the query error
             query_spec: Optional query specification that caused the error
         """
-        details = {}
-        if query_spec:
-            details["query_spec"] = query_spec
-
-        super().__init__(message, details)
+        super().__init__(message, {"query_spec": query_spec} if query_spec else None)
 
 
 class BackendError(GraphContextError):
-    """Raised when there are backend-related issues."""
+    """Raised when there are backend-specific issues."""
 
     def __init__(
         self,
         message: str,
-        operation: Optional[str] = None,
-        backend_error: Optional[Exception] = None
+        operation: str | None = None,
+        backend_error: Exception | None = None
     ) -> None:
         """
         Initialize the exception.
 
         Args:
             message: Description of the backend error
-            operation: Optional name of the operation that failed
-            backend_error: Optional original backend exception
+            operation: Optional name of the operation that caused the error
+            backend_error: Optional original exception from the backend
         """
         details = {}
         if operation:

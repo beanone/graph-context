@@ -13,7 +13,7 @@ from .exceptions import (
     RelationNotFoundError,
     SchemaError,
     TransactionError,
-    ValidationError
+    ValidationError,
 )
 from .interface import GraphContext
 from .types.type_base import (
@@ -27,7 +27,7 @@ from .types.type_base import (
     Relation,
     RelationType,
     TraversalDirection,
-    TraversalSpec
+    TraversalSpec,
 )
 
 __version__ = "0.1.0"

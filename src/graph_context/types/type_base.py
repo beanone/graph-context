@@ -6,8 +6,7 @@ including entity and relation types, property types, and validation rules.
 """
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
-from uuid import UUID
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -28,20 +27,20 @@ class PropertyDefinition(BaseModel):
     """Definition of a property in the schema."""
     type: PropertyType
     required: bool = False
-    default: Optional[Any] = None
-    description: Optional[str] = None
-    constraints: Optional[Dict[str, Any]] = None
+    default: Any | None = None
+    description: str | None = None
+    constraints: dict[str, Any] | None = None
 
 
 class EntityType(BaseModel):
     """Definition of an entity type in the schema."""
     name: str = Field(..., description="Name of the entity type")
-    description: Optional[str] = None
-    properties: Dict[str, PropertyDefinition] = Field(
+    description: str | None = None
+    properties: dict[str, PropertyDefinition] = Field(
         default_factory=dict,
         description="Dictionary of property definitions"
     )
-    indexes: List[str] = Field(
+    indexes: list[str] = Field(
         default_factory=list,
         description="List of property names to index"
     )
@@ -50,20 +49,20 @@ class EntityType(BaseModel):
 class RelationType(BaseModel):
     """Definition of a relation type in the schema."""
     name: str = Field(..., description="Name of the relation type")
-    description: Optional[str] = None
-    properties: Dict[str, PropertyDefinition] = Field(
+    description: str | None = None
+    properties: dict[str, PropertyDefinition] = Field(
         default_factory=dict,
         description="Dictionary of property definitions"
     )
-    from_types: List[str] = Field(
+    from_types: list[str] = Field(
         ...,
         description="List of allowed entity types for the source"
     )
-    to_types: List[str] = Field(
+    to_types: list[str] = Field(
         ...,
         description="List of allowed entity types for the target"
     )
-    indexes: List[str] = Field(
+    indexes: list[str] = Field(
         default_factory=list,
         description="List of property names to index"
     )
@@ -73,7 +72,7 @@ class Entity(BaseModel):
     """Representation of an entity in the graph."""
     id: str = Field(..., description="Unique identifier of the entity")
     type: str = Field(..., description="Type of the entity")
-    properties: Dict[str, Any] = Field(
+    properties: dict[str, Any] = Field(
         default_factory=dict,
         description="Dictionary of property values"
     )
@@ -93,7 +92,7 @@ class Relation(BaseModel):
     type: str = Field(..., description="Type of the relation")
     from_entity: str = Field(..., description="ID of the source entity")
     to_entity: str = Field(..., description="ID of the target entity")
-    properties: Dict[str, Any] = Field(
+    properties: dict[str, Any] = Field(
         default_factory=dict,
         description="Dictionary of property values"
     )
@@ -133,19 +132,19 @@ class QueryCondition(BaseModel):
 
 class QuerySpec(BaseModel):
     """Specification for a graph query."""
-    entity_type: Optional[str] = Field(
+    entity_type: str | None = Field(
         None,
         description="Type of entities to query"
     )
-    conditions: List[QueryCondition] = Field(
+    conditions: list[QueryCondition] = Field(
         default_factory=list,
         description="List of query conditions"
     )
-    limit: Optional[int] = Field(
+    limit: int | None = Field(
         None,
         description="Maximum number of results to return"
     )
-    offset: Optional[int] = Field(
+    offset: int | None = Field(
         None,
         description="Number of results to skip"
     )
@@ -165,7 +164,7 @@ class TraversalSpec(BaseModel):
         description="Maximum depth of traversal",
         ge=1
     )
-    relation_types: Optional[List[str]] = Field(
+    relation_types: list[str] | None = Field(
         None,
         description="List of relation types to traverse"
     )
@@ -173,7 +172,7 @@ class TraversalSpec(BaseModel):
         TraversalDirection.ANY,
         description="Direction of traversal"
     )
-    conditions: Optional[List[QueryCondition]] = Field(
+    conditions: list[QueryCondition] | None = Field(
         None,
         description="Conditions to filter traversed entities"
     )

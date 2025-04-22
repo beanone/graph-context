@@ -1,20 +1,20 @@
 """Tests for base type definitions."""
+from datetime import UTC, datetime
+
 import pytest
-from datetime import datetime, UTC
-from uuid import UUID
 
 from graph_context.types.type_base import (
-    PropertyType,
-    PropertyDefinition,
-    EntityType,
-    RelationType,
     Entity,
-    Relation,
-    QueryOperator,
+    EntityType,
+    PropertyDefinition,
+    PropertyType,
     QueryCondition,
+    QueryOperator,
     QuerySpec,
+    Relation,
+    RelationType,
     TraversalDirection,
-    TraversalSpec
+    TraversalSpec,
 )
 
 

@@ -1,19 +1,18 @@
 """Tests for custom exceptions."""
-import pytest
 
 from graph_context.exceptions import (
-    GraphContextError,
-    ValidationError,
-    EntityNotFoundError,
-    EntityTypeNotFoundError,
-    RelationNotFoundError,
-    RelationTypeNotFoundError,
+    BackendError,
     DuplicateEntityError,
     DuplicateRelationError,
-    TransactionError,
-    BackendError,
+    EntityNotFoundError,
+    EntityTypeNotFoundError,
+    GraphContextError,
+    QueryError,
+    RelationNotFoundError,
+    RelationTypeNotFoundError,
     SchemaError,
-    QueryError
+    TransactionError,
+    ValidationError,
 )
 
 

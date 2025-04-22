@@ -5,7 +5,7 @@ This module defines the abstract base class that all graph context implementatio
 must inherit from, providing a consistent interface for graph operations.
 """
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, TypeVar
+from typing import Any, TypeVar
 
 from .types.type_base import Entity, QuerySpec, Relation, TraversalSpec
 
@@ -47,7 +47,7 @@ class GraphContext(ABC):
     async def create_entity(
         self,
         entity_type: str,
-        properties: Dict[str, Any]
+        properties: dict[str, Any]
     ) -> Entity:
         """
         Create a new entity in the graph.
@@ -70,7 +70,7 @@ class GraphContext(ABC):
     async def get_entity(
         self,
         entity_id: str
-    ) -> Optional[Entity]:
+    ) -> Entity | None:
         """
         Retrieve an entity by ID.
 
@@ -89,8 +89,8 @@ class GraphContext(ABC):
     async def update_entity(
         self,
         entity_id: str,
-        properties: Dict[str, Any]
-    ) -> Optional[Entity]:
+        properties: dict[str, Any]
+    ) -> Entity | None:
         """
         Update an existing entity.
 
@@ -133,7 +133,7 @@ class GraphContext(ABC):
         relation_type: str,
         from_entity: str,
         to_entity: str,
-        properties: Optional[Dict[str, Any]] = None
+        properties: dict[str, Any] | None = None
     ) -> Relation:
         """
         Create a new relation between entities.
@@ -159,7 +159,7 @@ class GraphContext(ABC):
     async def get_relation(
         self,
         relation_id: str
-    ) -> Optional[Relation]:
+    ) -> Relation | None:
         """
         Retrieve a relation by ID.
 
@@ -178,8 +178,8 @@ class GraphContext(ABC):
     async def update_relation(
         self,
         relation_id: str,
-        properties: Dict[str, Any]
-    ) -> Optional[Relation]:
+        properties: dict[str, Any]
+    ) -> Relation | None:
         """
         Update an existing relation.
 
@@ -198,29 +198,10 @@ class GraphContext(ABC):
         pass
 
     @abstractmethod
-    async def delete_relation(
-        self,
-        relation_id: str
-    ) -> bool:
-        """
-        Delete a relation from the graph.
-
-        Args:
-            relation_id: ID of the relation to delete
-
-        Returns:
-            True if the relation was deleted, False if it was not found
-
-        Raises:
-            GraphContextError: If the operation fails
-        """
-        pass
-
-    @abstractmethod
     async def query(
         self,
         query_spec: QuerySpec
-    ) -> List[Entity]:
+    ) -> list[Entity]:
         """
         Execute a query against the graph.
 
@@ -241,7 +222,7 @@ class GraphContext(ABC):
         self,
         start_entity: str,
         traversal_spec: TraversalSpec
-    ) -> List[Entity]:
+    ) -> list[Entity]:
         """
         Traverse the graph starting from a given entity.
 

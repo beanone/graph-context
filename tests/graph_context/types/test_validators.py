@@ -1,22 +1,21 @@
 """Tests for type validation logic."""
-import pytest
-from datetime import datetime, UTC
-from uuid import UUID
 import re
-import math
-from datetime import timezone, timedelta
+from datetime import UTC, datetime, timedelta, timezone
+from uuid import UUID
+
+import pytest
 
 from graph_context.exceptions import ValidationError
 from graph_context.types.type_base import PropertyDefinition, PropertyType
 from graph_context.types.validators import (
-    validate_string,
-    validate_number,
     validate_boolean,
     validate_datetime,
-    validate_uuid,
-    validate_list,
     validate_dict,
-    validate_property_value
+    validate_list,
+    validate_number,
+    validate_property_value,
+    validate_string,
+    validate_uuid,
 )
 
 

@@ -17,7 +17,7 @@ from .type_base import (
     Relation,
     RelationType,
     TraversalDirection,
-    TraversalSpec
+    TraversalSpec,
 )
 from .validators import validate_property_value
 

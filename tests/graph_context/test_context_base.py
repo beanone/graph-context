@@ -1,23 +1,22 @@
+from typing import Any, Optional
+
 import pytest
-from typing import Dict, Any, Optional, List
+
 from graph_context.context_base import BaseGraphContext
 from graph_context.exceptions import (
     EntityNotFoundError,
     RelationNotFoundError,
-    ValidationError,
     SchemaError,
-    TransactionError
+    TransactionError,
+    ValidationError,
 )
 from graph_context.types.type_base import (
-    Entity,
     EntityType,
     PropertyDefinition,
     PropertyType,
-    QuerySpec,
-    Relation,
     RelationType,
-    TraversalSpec
 )
+
 
 class TestGraphContext(BaseGraphContext):
     """Test implementation of BaseGraphContext."""
@@ -118,7 +117,7 @@ class TestGraphContext(BaseGraphContext):
     async def create_entity(
         self,
         entity_type: str,
-        properties: Dict[str, Any]
+        properties: dict[str, Any]
     ) -> str:
         """Create a new entity."""
         if not entity_type:
@@ -130,7 +129,7 @@ class TestGraphContext(BaseGraphContext):
     async def get_entity(
         self,
         entity_id: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[dict[str, Any]]:
         """Get an entity by ID."""
         if not entity_id:
             raise ValidationError("Entity ID cannot be empty")
@@ -142,7 +141,7 @@ class TestGraphContext(BaseGraphContext):
     async def update_entity(
         self,
         entity_id: str,
-        properties: Dict[str, Any]
+        properties: dict[str, Any]
     ) -> bool:
         """Update an entity."""
         if not entity_id:
@@ -169,7 +168,7 @@ class TestGraphContext(BaseGraphContext):
         relation_type: str,
         from_entity: str,
         to_entity: str,
-        properties: Optional[Dict[str, Any]] = None
+        properties: Optional[dict[str, Any]] = None
     ) -> str:
         """Create a new relation."""
         if not relation_type:
@@ -187,7 +186,7 @@ class TestGraphContext(BaseGraphContext):
     async def get_relation(
         self,
         relation_id: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[dict[str, Any]]:
         """Get a relation by ID."""
         if not relation_id:
             raise ValidationError("Relation ID cannot be empty")
@@ -199,7 +198,7 @@ class TestGraphContext(BaseGraphContext):
     async def update_relation(
         self,
         relation_id: str,
-        properties: Dict[str, Any]
+        properties: dict[str, Any]
     ) -> bool:
         """Update a relation."""
         if not relation_id:
@@ -223,8 +222,8 @@ class TestGraphContext(BaseGraphContext):
 
     async def query(
         self,
-        query_spec: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        query_spec: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Execute a query."""
         if query_spec is None:
             raise ValidationError("Query spec cannot be None")
@@ -237,8 +236,8 @@ class TestGraphContext(BaseGraphContext):
     async def traverse(
         self,
         start_entity: str,
-        traversal_spec: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        traversal_spec: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Traverse the graph."""
         if not start_entity:
             raise ValidationError("Start entity ID cannot be empty")
@@ -253,7 +252,7 @@ class TestGraphContext(BaseGraphContext):
     async def _create_entity_internal(
         self,
         entity_type: str,
-        properties: Dict[str, Any]
+        properties: dict[str, Any]
     ) -> str:
         # Validate entity using parent class
         validated_props = self.validate_entity(entity_type, properties)
@@ -273,7 +272,7 @@ class TestGraphContext(BaseGraphContext):
     async def _get_entity_internal(
         self,
         entity_id: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[dict[str, Any]]:
         if self._in_transaction:
             return self._transaction_entities.get(entity_id)
         return self._entities.get(entity_id)
@@ -281,7 +280,7 @@ class TestGraphContext(BaseGraphContext):
     async def _update_entity_internal(
         self,
         entity_id: str,
-        properties: Dict[str, Any]
+        properties: dict[str, Any]
     ) -> bool:
         entities = self._transaction_entities if self._in_transaction else self._entities
         if entity_id in entities:
@@ -320,7 +319,7 @@ class TestGraphContext(BaseGraphContext):
         relation_type: str,
         from_entity: str,
         to_entity: str,
-        properties: Optional[Dict[str, Any]] = None
+        properties: Optional[dict[str, Any]] = None
     ) -> str:
         # Get entity types for validation
         from_entity_data = await self._get_entity_internal(from_entity)
@@ -353,7 +352,7 @@ class TestGraphContext(BaseGraphContext):
     async def _get_relation_internal(
         self,
         relation_id: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[dict[str, Any]]:
         if self._in_transaction:
             return self._transaction_relations.get(relation_id)
         return self._relations.get(relation_id)
@@ -361,7 +360,7 @@ class TestGraphContext(BaseGraphContext):
     async def _update_relation_internal(
         self,
         relation_id: str,
-        properties: Dict[str, Any]
+        properties: dict[str, Any]
     ) -> bool:
         relations = self._transaction_relations if self._in_transaction else self._relations
         if relation_id in relations:
@@ -395,8 +394,8 @@ class TestGraphContext(BaseGraphContext):
 
     async def _query_internal(
         self,
-        query_spec: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        query_spec: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         results = []
         start = query_spec.get("start")
         relation_type = query_spec.get("relation")
@@ -417,8 +416,8 @@ class TestGraphContext(BaseGraphContext):
     async def _traverse_internal(
         self,
         start_entity: str,
-        traversal_spec: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        traversal_spec: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         results = []
         max_depth = traversal_spec.get("max_depth", 1)
         relation_types = traversal_spec.get("relation_types", [])
@@ -1221,35 +1220,35 @@ class SimpleBaseGraphContext(BaseGraphContext):
     async def cleanup(self) -> None:
         pass
 
-    async def create_entity(self, entity_type: str, properties: Dict[str, Any]) -> str:
+    async def create_entity(self, entity_type: str, properties: dict[str, Any]) -> str:
         pass
 
-    async def get_entity(self, entity_id: str) -> Optional[Dict[str, Any]]:
+    async def get_entity(self, entity_id: str) -> Optional[dict[str, Any]]:
         pass
 
-    async def update_entity(self, entity_id: str, properties: Dict[str, Any]) -> bool:
+    async def update_entity(self, entity_id: str, properties: dict[str, Any]) -> bool:
         pass
 
     async def delete_entity(self, entity_id: str) -> bool:
         pass
 
     async def create_relation(self, relation_type: str, from_entity: str, to_entity: str,
-                            properties: Optional[Dict[str, Any]] = None) -> str:
+                            properties: Optional[dict[str, Any]] = None) -> str:
         pass
 
-    async def get_relation(self, relation_id: str) -> Optional[Dict[str, Any]]:
+    async def get_relation(self, relation_id: str) -> Optional[dict[str, Any]]:
         pass
 
-    async def update_relation(self, relation_id: str, properties: Dict[str, Any]) -> bool:
+    async def update_relation(self, relation_id: str, properties: dict[str, Any]) -> bool:
         pass
 
     async def delete_relation(self, relation_id: str) -> bool:
         pass
 
-    async def query(self, query_spec: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def query(self, query_spec: dict[str, Any]) -> list[dict[str, Any]]:
         pass
 
-    async def traverse(self, start_entity: str, traversal_spec: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def traverse(self, start_entity: str, traversal_spec: dict[str, Any]) -> list[dict[str, Any]]:
         pass
 
 @pytest.mark.asyncio

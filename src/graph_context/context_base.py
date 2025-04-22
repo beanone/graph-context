@@ -4,26 +4,11 @@ Base implementation for the graph-context module.
 This module provides common functionality that can be used by specific graph
 context implementations.
 """
-from abc import ABC
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
-from .exceptions import (
-    EntityNotFoundError,
-    GraphContextError,
-    SchemaError,
-    TransactionError,
-    ValidationError
-)
+from .exceptions import SchemaError, TransactionError, ValidationError
 from .interface import GraphContext
-from .types.type_base import (
-    Entity,
-    EntityType,
-    PropertyDefinition,
-    QuerySpec,
-    Relation,
-    RelationType,
-    TraversalSpec
-)
+from .types.type_base import EntityType, RelationType
 from .types.validators import validate_property_value
 
 
@@ -38,8 +23,8 @@ class BaseGraphContext(GraphContext):
 
     def __init__(self) -> None:
         """Initialize the base graph context."""
-        self._entity_types: Dict[str, EntityType] = {}
-        self._relation_types: Dict[str, RelationType] = {}
+        self._entity_types: dict[str, EntityType] = {}
+        self._relation_types: dict[str, RelationType] = {}
         self._in_transaction: bool = False
 
     def register_entity_type(self, entity_type: EntityType) -> None:
@@ -98,8 +83,8 @@ class BaseGraphContext(GraphContext):
     def validate_entity(
         self,
         entity_type: str,
-        properties: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        properties: dict[str, Any]
+    ) -> dict[str, Any]:
         """
         Validate entity properties against the schema.
 
@@ -121,7 +106,7 @@ class BaseGraphContext(GraphContext):
                 schema_type=entity_type
             )
 
-        validated: Dict[str, Any] = {}
+        validated: dict[str, Any] = {}
         for name, prop_def in type_def.properties.items():
             if name in properties:
                 validated[name] = validate_property_value(
@@ -142,7 +127,7 @@ class BaseGraphContext(GraphContext):
         if unknown:
             raise ValidationError(
                 f"Unknown properties: {', '.join(unknown)}",
-                field=list(unknown)[0],
+                field=next(iter(unknown)),
                 constraint="unknown"
             )
 
@@ -153,8 +138,8 @@ class BaseGraphContext(GraphContext):
         relation_type: str,
         from_entity_type: str,
         to_entity_type: str,
-        properties: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        properties: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """
         Validate relation properties and entity types against the schema.
 
@@ -198,7 +183,7 @@ class BaseGraphContext(GraphContext):
         if not properties:
             return {}
 
-        validated: Dict[str, Any] = {}
+        validated: dict[str, Any] = {}
         for name, prop_def in type_def.properties.items():
             if name in properties:
                 validated[name] = validate_property_value(
@@ -219,7 +204,7 @@ class BaseGraphContext(GraphContext):
         if unknown:
             raise ValidationError(
                 f"Unknown properties: {', '.join(unknown)}",
-                field=list(unknown)[0],
+                field=next(iter(unknown)),
                 constraint="unknown"
             )
 
