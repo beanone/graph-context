@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="1200" height="300" viewBox="0 0 1200 300" xmlns="http://www.w3.org/2000/svg">
+    <!-- Background -->
+    <rect width="1200" height="300" fill="#1a1a1a"/>
+
+    <!-- Graph Nodes and Edges -->
+    <g transform="translate(100, 150)">
+        <!-- Edges -->
+        <path d="M 80,0 L 200,-50" stroke="#4a9eff" stroke-width="3" opacity="0.6"/>
+        <path d="M 80,0 L 200,50" stroke="#4a9eff" stroke-width="3" opacity="0.6"/>
+        <path d="M 200,-50 L 320,0" stroke="#4a9eff" stroke-width="3" opacity="0.6"/>
+        <path d="M 200,50 L 320,0" stroke="#4a9eff" stroke-width="3" opacity="0.6"/>
+
+        <!-- Nodes -->
+        <circle cx="80" cy="0" r="20" fill="#6b4fbb"/>
+        <circle cx="200" cy="-50" r="20" fill="#6b4fbb"/>
+        <circle cx="200" cy="50" r="20" fill="#6b4fbb"/>
+        <circle cx="320" cy="0" r="20" fill="#6b4fbb"/>
+    </g>
+
+    <!-- Project Name -->
+    <text x="500" y="170" font-family="Arial, sans-serif" font-size="72" font-weight="bold" fill="white">
+        Graph Context
+    </text>
+
+    <!-- Tagline -->
+    <text x="500" y="210" font-family="Arial, sans-serif" font-size="24" fill="#808080">
+        A Type-Safe Graph Database Abstraction Layer
+    </text>
+</svg>

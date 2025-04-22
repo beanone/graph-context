@@ -1,5 +1,9 @@
 # Graph Context
 
+<p align="center">
+  <img src="docs/assets/logos/banner.svg" alt="Graph Context Banner" width="100%">
+</p>
+
 A flexible and type-safe graph database abstraction layer for Python, providing a robust foundation for building graph-based applications with strong validation and transaction support.
 
 [![Python Versions](https://img.shields.io/pypi/pyversions/graph-context)](https://pypi.org/project/graph-context)
