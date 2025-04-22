@@ -13,6 +13,19 @@ from ..exceptions import ValidationError
 from .type_base import PropertyDefinition, PropertyType
 
 
+# Add the validation map before the validate_property_value function
+_PROPERTY_VALIDATORS = {
+    PropertyType.STRING: lambda v, c: validate_string(v, c),
+    PropertyType.INTEGER: lambda v, c: validate_number(v, PropertyType.INTEGER, c),
+    PropertyType.FLOAT: lambda v, c: validate_number(v, PropertyType.FLOAT, c),
+    PropertyType.BOOLEAN: lambda v, c: validate_boolean(v),
+    PropertyType.DATETIME: lambda v, c: validate_datetime(v, c),
+    PropertyType.UUID: lambda v, c: validate_uuid(v),
+    PropertyType.LIST: lambda v, c: validate_list(v, c),
+    PropertyType.DICT: lambda v, c: validate_dict(v, c),
+}
+
+
 def validate_string(
     value: Any,
     constraints: Optional[dict[str, Any]] = None
@@ -40,14 +53,16 @@ def validate_string(
     if constraints:
         if "min_length" in constraints and len(value) < constraints["min_length"]:
             raise ValidationError(
-                f"min_length constraint: String length must be at least {constraints['min_length']}",
+                f"min_length constraint: String length "
+                f"must be at least {constraints['min_length']}",
                 value=value,
                 constraint="min_length"
             )
 
         if "max_length" in constraints and len(value) > constraints["max_length"]:
             raise ValidationError(
-                f"max_length constraint: String length must be at most {constraints['max_length']}",
+                f"max_length constraint: String length must "
+                f"be at most {constraints['max_length']}",
                 value=value,
                 constraint="max_length"
             )
@@ -262,14 +277,16 @@ def validate_list(
     if constraints:
         if "min_items" in constraints and len(value) < constraints["min_items"]:
             raise ValidationError(
-                f"min_items constraint: List must have at least {constraints['min_items']} items",
+                f"min_items constraint: List must have at "
+                f"least {constraints['min_items']} items",
                 value=value,
                 constraint="min_items"
             )
 
         if "max_items" in constraints and len(value) > constraints["max_items"]:
             raise ValidationError(
-                f"max_items constraint: List must have at most {constraints['max_items']} items",
+                f"max_items constraint: List must have "
+                f"at most {constraints['max_items']} items",
                 value=value,
                 constraint="max_items"
             )
@@ -279,20 +296,13 @@ def validate_list(
             item_constraints = constraints.get("item_constraints")
             for i, item in enumerate(value):
                 try:
-                    if item_type == PropertyType.STRING:
-                        value[i] = validate_string(item, item_constraints)
-                    elif item_type in (PropertyType.INTEGER, PropertyType.FLOAT):
-                        value[i] = validate_number(item, item_type, item_constraints)
-                    elif item_type == PropertyType.BOOLEAN:
-                        value[i] = validate_boolean(item)
-                    elif item_type == PropertyType.DATETIME:
-                        value[i] = validate_datetime(item, item_constraints)
-                    elif item_type == PropertyType.UUID:
-                        value[i] = validate_uuid(item)
-                    elif item_type == PropertyType.LIST:
-                        value[i] = validate_list(item, item_constraints)
-                    elif item_type == PropertyType.DICT:
-                        value[i] = validate_dict(item, item_constraints)
+                    validator = _PROPERTY_VALIDATORS.get(item_type)
+                    if validator is None:
+                        raise ValidationError(
+                            f"Unsupported property type: {item_type}",
+                            constraint="type"
+                        )
+                    value[i] = validator(item, item_constraints)
                 except ValidationError as e:
                     raise ValidationError(
                         f"Invalid item at index {i}: {e!s}",
@@ -354,20 +364,13 @@ def validate_dict(
                     prop_type = prop_def["type"]
                     prop_constraints = prop_def.get("constraints")
                     try:
-                        if prop_type == PropertyType.STRING:
-                            value[prop_name] = validate_string(value[prop_name], prop_constraints)
-                        elif prop_type in (PropertyType.INTEGER, PropertyType.FLOAT):
-                            value[prop_name] = validate_number(value[prop_name], prop_type, prop_constraints)
-                        elif prop_type == PropertyType.BOOLEAN:
-                            value[prop_name] = validate_boolean(value[prop_name])
-                        elif prop_type == PropertyType.DATETIME:
-                            value[prop_name] = validate_datetime(value[prop_name], prop_constraints)
-                        elif prop_type == PropertyType.UUID:
-                            value[prop_name] = validate_uuid(value[prop_name])
-                        elif prop_type == PropertyType.LIST:
-                            value[prop_name] = validate_list(value[prop_name], prop_constraints)
-                        elif prop_type == PropertyType.DICT:
-                            value[prop_name] = validate_dict(value[prop_name], prop_constraints)
+                        validator = _PROPERTY_VALIDATORS.get(prop_type)
+                        if validator is None:
+                            raise ValidationError(
+                                f"Unsupported property type: {prop_type}",
+                                constraint="type"
+                            )
+                        value[prop_name] = validator(value[prop_name], prop_constraints)
                     except ValidationError as e:
                         raise ValidationError(
                             f"Invalid value for property '{prop_name}': {e!s}",
@@ -377,7 +380,6 @@ def validate_dict(
                         ) from e
 
     return value
-
 
 def validate_property_value(
     value: Any,
@@ -405,29 +407,18 @@ def validate_property_value(
         return property_def.default
 
     try:
-        if property_def.type == PropertyType.STRING:
-            return validate_string(value, property_def.constraints)
-        elif property_def.type in (PropertyType.INTEGER, PropertyType.FLOAT):
-            return validate_number(value, property_def.type, property_def.constraints)
-        elif property_def.type == PropertyType.BOOLEAN:
-            return validate_boolean(value)
-        elif property_def.type == PropertyType.DATETIME:
-            return validate_datetime(value, property_def.constraints)
-        elif property_def.type == PropertyType.UUID:
-            return validate_uuid(value)
-        elif property_def.type == PropertyType.LIST:
-            return validate_list(value, property_def.constraints)
-        elif property_def.type == PropertyType.DICT:
-            return validate_dict(value, property_def.constraints)
-        else:
+        validator = _PROPERTY_VALIDATORS.get(property_def.type)
+        if validator is None:
             raise ValidationError(
                 f"Unsupported property type: {property_def.type}",
                 constraint="type"
             )
-    except ValidationError as e:
+        return validator(value, property_def.constraints)
+    except ValidationError:
+        raise
+    except Exception as e:
         raise ValidationError(
-            str(e),
-            field=e.details.get("field"),
-            value=e.details.get("value"),
-            constraint=e.details.get("constraint")
+            f"Validation failed: {e!s}",
+            value=value,
+            constraint="type"
         ) from e
