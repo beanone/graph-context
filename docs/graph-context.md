@@ -201,18 +201,22 @@ Each backend implementation must:
 ## Dependencies
 
 ```toml
-[tool.poetry.dependencies]
-python = "^3.10"
-pydantic = "^2.5.2"
-typing-extensions = "^4.8.0"
-asyncio = "^3.4.3"
+[project]
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.5.2",
+    "typing-extensions>=4.8.0",
+    "asyncio>=3.4.3",
+]
 
-[tool.poetry.dev-dependencies]
-pytest = "^7.4.3"
-pytest-asyncio = "^0.21.1"
-pytest-cov = "^4.1.0"
-hypothesis = "^6.87.1"
-ruff = "^0.1.6"
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.3",
+    "pytest-asyncio>=0.21.1",
+    "pytest-cov>=4.1.0",
+    "hypothesis>=6.87.1",
+    "ruff>=0.1.6",
+]
 ```
 
 ## Usage Examples
