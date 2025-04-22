@@ -597,7 +597,8 @@ def test_validate_property_value_edge_cases():
 
 
 def test_validate_dict_additional_properties_with_empty_properties():
-    """Test dictionary validation with additional properties check but no defined properties."""
+    """Test dictionary validation with additional
+       properties check but no defined properties."""
     constraints = {
         "additional_properties": False,
         "properties": {}

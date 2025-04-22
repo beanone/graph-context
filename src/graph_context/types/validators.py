@@ -12,7 +12,6 @@ from uuid import UUID
 from ..exceptions import ValidationError
 from .type_base import PropertyDefinition, PropertyType
 
-
 # Add the validation map before the validate_property_value function
 _PROPERTY_VALIDATORS = {
     PropertyType.STRING: lambda v, c: validate_string(v, c),

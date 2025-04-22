@@ -140,8 +140,7 @@ def test_backend_error():
     backend_error = ValueError("Original error")
     exc = BackendError(msg, operation="query", backend_error=backend_error)
     assert exc.details["operation"] == "query"
-    assert str(exc.details["backend_error"]) == str(backend_error)  # Compare string representations
-
+    assert str(exc.details["backend_error"]) == str(backend_error)
 
 def test_schema_error():
     """Test SchemaError exception."""
