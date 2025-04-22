@@ -28,6 +28,7 @@ dependencies = [
     "pydantic>=2.5.2",
     "typing-extensions>=4.8.0",
     "asyncio>=3.4.3",
+    "cachetools>=5.3.2",
 ]
 
 [project.optional-dependencies]
