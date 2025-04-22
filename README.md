@@ -3,7 +3,7 @@
 A flexible and type-safe graph database abstraction layer for Python, providing a robust foundation for building graph-based applications with strong validation and transaction support.
 
 [![Python Versions](https://img.shields.io/pypi/pyversions/graph-context)](https://pypi.org/project/graph-context)
-[![License](https://img.shields.io/github/license/beanone/graph-context)](https://github.com/beanone/graph-context/blob/main/LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/beanone/graph-context/blob/main/LICENSE)
 [![Tests](https://github.com/beanone/graph-context/actions/workflows/tests.yml/badge.svg)](https://github.com/beanone/graph-context/actions?query=workflow%3Atests)
 [![Coverage](https://codecov.io/gh/beanone/graph-context/branch/main/graph/badge.svg)](https://codecov.io/gh/beanone/graph-context)
 [![Code Quality](https://img.shields.io/badge/code%20style-ruff-000000)](https://github.com/astral-sh/ruff)
