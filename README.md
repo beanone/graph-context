@@ -404,3 +404,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - Thanks to all contributors who have helped shape this project
 - Inspired by graph database concepts and best practices
+
+## Documentation
+
+- [Graph Context Architecture](docs/graph-context.md)
+- [Event System](docs/event-system.md) - Flexible pub/sub system for implementing cross-cutting concerns
+- [Caching Implementation Plan](docs/caching-implementation-plan.md)
