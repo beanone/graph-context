@@ -170,7 +170,21 @@ class TestGraphContext(BaseGraphContext):
         to_entity: str,
         properties: Optional[dict[str, Any]] = None
     ) -> str:
-        """Create a new relation."""
+        """Create a new relation.
+
+        Args:
+            relation_type: The type of relation to create.
+            from_entity: The ID of the source entity.
+            to_entity: The ID of the target entity.
+            properties: Optional properties for the relation.
+
+        Returns:
+            str: The ID of the created relation.
+
+        Raises:
+            ValidationError: If any of the input parameters are invalid.
+            EntityNotFoundError: If either the source or target entity does not exist.
+        """
         if not relation_type:
             raise ValidationError("Relation type cannot be empty")
         if not from_entity:
@@ -181,7 +195,12 @@ class TestGraphContext(BaseGraphContext):
             raise EntityNotFoundError(f"From entity {from_entity} not found")
         if not await self._get_entity_internal(to_entity):
             raise EntityNotFoundError(f"To entity {to_entity} not found")
-        return await self._create_relation_internal(relation_type, from_entity, to_entity, properties)
+        return await self._create_relation_internal(
+            relation_type,
+            from_entity,
+            to_entity,
+            properties
+        )
 
     async def get_relation(
         self,
@@ -238,14 +257,29 @@ class TestGraphContext(BaseGraphContext):
         start_entity: str,
         traversal_spec: dict[str, Any]
     ) -> list[dict[str, Any]]:
-        """Traverse the graph."""
+        """Traverse the graph.
+
+        Args:
+            start_entity: The ID of the starting entity.
+            traversal_spec: The specification for traversal.
+
+        Returns:
+            list[dict[str, Any]]: The traversal results.
+
+        Raises:
+            ValidationError: If the input parameters are invalid.
+        """
         if not start_entity:
             raise ValidationError("Start entity ID cannot be empty")
         if traversal_spec is None:
             raise ValidationError("Traversal spec cannot be None")
         if "max_depth" in traversal_spec and traversal_spec["max_depth"] < 0:
             raise ValidationError("Max depth cannot be negative")
-        if "direction" in traversal_spec and traversal_spec["direction"] not in ["inbound", "outbound", "any"]:
+        if "direction" in traversal_spec and traversal_spec["direction"] not in [
+            "inbound",
+            "outbound",
+            "any"
+        ]:
             raise ValidationError("Invalid direction in traversal spec")
         return await self._traverse_internal(start_entity, traversal_spec)
 
