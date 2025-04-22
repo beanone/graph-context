@@ -1,6 +1,7 @@
 """Unit tests for the cache store implementation."""
 
 import pytest
+import asyncio
 from datetime import datetime, timedelta
 from typing import Set
 from uuid import uuid4
@@ -11,7 +12,7 @@ from graph_context.types.type_base import Entity, Relation
 @pytest.fixture
 def cache_store():
     """Create a cache store instance for testing."""
-    return CacheStore(maxsize=100, ttl=300)  # 5 minutes TTL
+    return CacheStore(maxsize=100, ttl=1)  # 1 second TTL for testing
 
 @pytest.fixture
 def sample_entity():
@@ -55,12 +56,14 @@ async def test_cache_ttl(cache_store, sample_entity):
     entry = CacheEntry(
         value=sample_entity,
         entity_type="person",
-        operation_id=str(uuid4()),
-        expires_at=datetime.utcnow() - timedelta(seconds=1)  # Already expired
+        operation_id=str(uuid4())
     )
 
     # Set the entry
     await cache_store.set(key, entry)
+
+    # Wait for TTL to expire (1 second)
+    await asyncio.sleep(1.1)
 
     # Try to get expired entry
     result = await cache_store.get(key)
@@ -120,6 +123,10 @@ async def test_type_dependencies(cache_store, sample_entity):
     for key, entry in {**person_entries, **org_entries}.items():
         await cache_store.set(key, entry)
 
+    # Verify initial state
+    assert len(cache_store._type_dependencies["person"]) == 2
+    assert len(cache_store._type_dependencies["organization"]) == 1
+
     # Invalidate person type
     await cache_store.invalidate_type("person")
 
@@ -128,6 +135,10 @@ async def test_type_dependencies(cache_store, sample_entity):
         assert await cache_store.get(key) is None
     for key in org_entries:
         assert await cache_store.get(key) is not None
+
+    # Verify dependencies are cleaned up
+    assert len(cache_store._type_dependencies["person"]) == 0
+    assert len(cache_store._type_dependencies["organization"]) == 1
 
 @pytest.mark.asyncio
 async def test_query_dependencies(cache_store, sample_entity):
@@ -144,11 +155,17 @@ async def test_query_dependencies(cache_store, sample_entity):
 
     await cache_store.set("query:result", entry)
 
+    # Verify initial state
+    assert len(cache_store._query_dependencies[query_hash]) == 1
+
     # Invalidate query
     await cache_store.invalidate_query(query_hash)
 
     # Verify query result is invalidated
     assert await cache_store.get("query:result") is None
+
+    # Verify dependencies are cleaned up
+    assert len(cache_store._query_dependencies[query_hash]) == 0
 
 @pytest.mark.asyncio
 async def test_reverse_dependencies(cache_store, sample_entity):
@@ -166,14 +183,11 @@ async def test_reverse_dependencies(cache_store, sample_entity):
     # Set main entry and dependents
     await cache_store.set(main_key, main_entry)
     for key in dependent_keys:
-        await cache_store.set(
-            key,
-            CacheEntry(value=sample_entity, entity_type="person", operation_id=str(uuid4()))
-        )
+        entry = CacheEntry(value=sample_entity, entity_type="person", operation_id=str(uuid4()))
+        await cache_store.set(key, entry, dependencies={main_key})
 
-    # Add dependencies
-    for dep_key in dependent_keys:
-        await cache_store.set(dep_key, main_entry, dependencies={main_key})
+    # Verify initial state
+    assert len(cache_store._reverse_dependencies[main_key]) == len(dependent_keys)
 
     # Invalidate dependencies
     await cache_store.invalidate_dependencies(main_key)
@@ -181,6 +195,9 @@ async def test_reverse_dependencies(cache_store, sample_entity):
     # Verify dependents are invalidated
     for key in dependent_keys:
         assert await cache_store.get(key) is None
+
+    # Verify dependencies are cleaned up
+    assert len(cache_store._reverse_dependencies[main_key]) == 0
 
 @pytest.mark.asyncio
 async def test_bulk_operations(cache_store, sample_entity):
@@ -203,27 +220,23 @@ async def test_bulk_operations(cache_store, sample_entity):
 @pytest.mark.asyncio
 async def test_scan_operation(cache_store, sample_entity):
     """Test scanning cache entries."""
-    # Add test entries
+    # Add multiple entries
     entries = {
-        f"scan:test:{i}": CacheEntry(
-            value=sample_entity,
-            entity_type="person",
-            operation_id=str(uuid4())
-        )
-        for i in range(5)
+        "scan:1": CacheEntry(value=sample_entity, entity_type="person", operation_id=str(uuid4())),
+        "scan:2": CacheEntry(value=sample_entity, entity_type="person", operation_id=str(uuid4())),
+        "scan:3": CacheEntry(value=sample_entity, entity_type="person", operation_id=str(uuid4()))
     }
 
     for key, entry in entries.items():
         await cache_store.set(key, entry)
 
     # Scan and collect results
-    scanned_entries = {}
+    scanned = {}
     async for key, entry in cache_store.scan():
-        scanned_entries[key] = entry
+        scanned[key] = entry
 
-    # Verify all entries were scanned
-    assert all(key in scanned_entries for key in entries)
-    assert all(
-        scanned_entries[key].value == entry.value
-        for key, entry in entries.items()
-    )
+    # Verify all entries are found
+    assert len(scanned) == len(entries)
+    for key, entry in entries.items():
+        assert key in scanned
+        assert scanned[key].value == entry.value

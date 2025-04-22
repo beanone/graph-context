@@ -6,7 +6,7 @@ and event handling for the graph context.
 
 import time
 from typing import Any, Dict, Optional, Set
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from graph_context.event_system import GraphEvent
 from .cache_store import CacheStore, CacheEntry
@@ -111,19 +111,18 @@ class CacheManager:
         cached = await self.store.get(key)
         if cached:
             self._track_cache_access(True, time.time() - start_time)
-            return
+            return cached.value
+
+        self._track_cache_access(False, time.time() - start_time)
 
         if result:
-            ttl = self.config.get_ttl_for_type(entity_type)
-            expires_at = datetime.now() + timedelta(seconds=ttl) if ttl else None
             entry = CacheEntry(
                 value=result,
                 entity_type=entity_type,
-                expires_at=expires_at,
             )
             await self.store.set(key, entry)
 
-        self._track_cache_access(False, time.time() - start_time)
+        return result
 
     async def _handle_entity_write(
         self,
@@ -179,19 +178,18 @@ class CacheManager:
         cached = await self.store.get(key)
         if cached:
             self._track_cache_access(True, time.time() - start_time)
-            return
+            return cached.value
+
+        self._track_cache_access(False, time.time() - start_time)
 
         if result:
-            ttl = self.config.get_ttl_for_type(relation_type)
-            expires_at = datetime.now() + timedelta(seconds=ttl) if ttl else None
             entry = CacheEntry(
                 value=result,
                 relation_type=relation_type,
-                expires_at=expires_at,
             )
             await self.store.set(key, entry)
 
-        self._track_cache_access(False, time.time() - start_time)
+        return result
 
     async def _handle_relation_write(
         self,
@@ -242,13 +240,10 @@ class CacheManager:
             **_: Additional unused kwargs
         """
         key = f"query:{query_hash}"
-        ttl = self.config.get_ttl_for_type("query")
-        expires_at = datetime.now() + timedelta(seconds=ttl) if ttl else None
         entry = CacheEntry(
             value={"result": result},  # Wrap in dict to satisfy BaseModel requirement
             query_hash=query_hash,
             dependencies=dependencies,
-            expires_at=expires_at,
         )
         await self.store.set(key, entry)
 
@@ -268,13 +263,10 @@ class CacheManager:
             **_: Additional unused kwargs
         """
         key = f"traversal:{traversal_hash}"
-        ttl = self.config.get_ttl_for_type("traversal")
-        expires_at = datetime.now() + timedelta(seconds=ttl) if ttl else None
         entry = CacheEntry(
             value={"result": result},  # Wrap in dict to satisfy BaseModel requirement
             query_hash=traversal_hash,  # Reuse query_hash field
             dependencies=dependencies,
-            expires_at=expires_at,
         )
         await self.store.set(key, entry)
 
@@ -289,8 +281,11 @@ class CacheManager:
             modified_types: Set of type names that were modified
             **_: Additional unused kwargs
         """
+        start_time = time.time()
         for type_name in modified_types:
             await self.store.invalidate_type(type_name)
+            # Track cache miss for each invalidated type
+            self._track_cache_access(False, time.time() - start_time)
 
     def enable(self) -> None:
         """Enable caching."""

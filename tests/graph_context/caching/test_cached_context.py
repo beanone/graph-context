@@ -7,11 +7,11 @@ from uuid import uuid4
 
 from graph_context.caching import CachedGraphContext
 from graph_context.context_base import BaseGraphContext
-from graph_context.types.type_base import Entity, Relation
+from graph_context.types.type_base import Entity, Relation, QuerySpec, TraversalSpec
 from graph_context.event_system import EventContext, GraphEvent, EventMetadata
 
 class MockBaseContext(BaseGraphContext):
-    """Mock base context for testing."""
+    """Mock implementation of BaseGraphContext for testing."""
 
     def __init__(self):
         super().__init__()
@@ -23,22 +23,22 @@ class MockBaseContext(BaseGraphContext):
             'query': 0,
             'traverse': 0
         }
+        self._in_transaction = False
 
-    async def get_entity(self, entity_type: str, entity_id: str) -> Optional[Entity]:
-        """Get an entity from storage."""
-        self._call_count['get_entity'] += 1
-        return self._entities.get(entity_type, {}).get(entity_id)
+    async def initialize(self) -> None:
+        """Initialize the context."""
+        pass
 
-    async def get_relation(self, relation_type: str, relation_id: str) -> Optional[Relation]:
-        """Get a relation from storage."""
-        self._call_count['get_relation'] += 1
-        return self._relations.get(relation_type, {}).get(relation_id)
+    async def cleanup(self) -> None:
+        """Clean up resources."""
+        pass
 
-    async def create_entity(self, entity_type: str, entity: Entity) -> str:
+    async def create_entity(self, entity_type: str, properties: dict[str, Any]) -> Entity:
         """Create an entity in storage."""
         if entity_type not in self._entities:
             self._entities[entity_type] = {}
         entity_id = str(uuid4())
+        entity = Entity(id=entity_id, type=entity_type, properties=properties)
         self._entities[entity_type][entity_id] = entity
         await self.emit(
             GraphEvent.ENTITY_WRITE,
@@ -49,13 +49,74 @@ class MockBaseContext(BaseGraphContext):
             ),
             data={'entity': entity, 'entity_id': entity_id}
         )
-        return entity_id
+        return entity
 
-    async def create_relation(self, relation_type: str, relation: Relation) -> str:
+    async def get_entity(self, entity_id: str) -> Optional[Entity]:
+        """Get an entity from storage."""
+        self._call_count['get_entity'] += 1
+        for entities in self._entities.values():
+            if entity_id in entities:
+                return entities[entity_id]
+        return None
+
+    async def update_entity(self, entity_id: str, properties: dict[str, Any]) -> Optional[Entity]:
+        """Update an entity in storage."""
+        entity = await self.get_entity(entity_id)
+        if not entity:
+            return None
+
+        updated_entity = Entity(
+            id=entity_id,
+            type=entity.type,
+            properties={**entity.properties, **properties}
+        )
+        self._entities[entity.type][entity_id] = updated_entity
+        await self.emit(
+            GraphEvent.ENTITY_WRITE,
+            metadata=EventMetadata(
+                entity_type=entity.type,
+                operation_id=str(uuid4()),
+                timestamp=datetime.utcnow()
+            ),
+            data={'entity': updated_entity, 'entity_id': entity_id}
+        )
+        return updated_entity
+
+    async def delete_entity(self, entity_id: str) -> bool:
+        """Delete an entity from storage."""
+        for entity_type, entities in self._entities.items():
+            if entity_id in entities:
+                del entities[entity_id]
+                await self.emit(
+                    GraphEvent.ENTITY_DELETE,
+                    metadata=EventMetadata(
+                        entity_type=entity_type,
+                        operation_id=str(uuid4()),
+                        timestamp=datetime.utcnow()
+                    ),
+                    data={'entity_id': entity_id}
+                )
+                return True
+        return False
+
+    async def create_relation(
+        self,
+        relation_type: str,
+        from_entity: str,
+        to_entity: str,
+        properties: dict[str, Any] | None = None
+    ) -> Relation:
         """Create a relation in storage."""
         if relation_type not in self._relations:
             self._relations[relation_type] = {}
         relation_id = str(uuid4())
+        relation = Relation(
+            id=relation_id,
+            type=relation_type,
+            source_id=from_entity,
+            target_id=to_entity,
+            properties=properties or {}
+        )
         self._relations[relation_type][relation_id] = relation
         await self.emit(
             GraphEvent.RELATION_WRITE,
@@ -66,24 +127,61 @@ class MockBaseContext(BaseGraphContext):
             ),
             data={'relation': relation, 'relation_id': relation_id}
         )
-        return relation_id
+        return relation
 
-    async def query(self, query_spec: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def get_relation(self, relation_id: str) -> Optional[Relation]:
+        """Get a relation from storage."""
+        self._call_count['get_relation'] += 1
+        for relations in self._relations.values():
+            if relation_id in relations:
+                return relations[relation_id]
+        return None
+
+    async def update_relation(
+        self,
+        relation_id: str,
+        properties: dict[str, Any]
+    ) -> Optional[Relation]:
+        """Update a relation in storage."""
+        relation = await self.get_relation(relation_id)
+        if not relation:
+            return None
+
+        updated_relation = Relation(
+            id=relation_id,
+            type=relation.type,
+            source_id=relation.source_id,
+            target_id=relation.target_id,
+            properties={**relation.properties, **properties}
+        )
+        self._relations[relation.type][relation_id] = updated_relation
+        await self.emit(
+            GraphEvent.RELATION_WRITE,
+            metadata=EventMetadata(
+                relation_type=relation.type,
+                operation_id=str(uuid4()),
+                timestamp=datetime.utcnow()
+            ),
+            data={'relation': updated_relation, 'relation_id': relation_id}
+        )
+        return updated_relation
+
+    async def query(self, query_spec: QuerySpec) -> list[Entity]:
         """Execute a query."""
         self._call_count['query'] += 1
-        entity_type = query_spec.get('type')
+        entity_type = query_spec.type
         if not entity_type:
             return []
 
         results = []
         for entity_id, entity in self._entities.get(entity_type, {}).items():
-            if self._matches_filter(entity, query_spec.get('filter', {})):
-                results.append({'id': entity_id, **entity.dict()})
+            if self._matches_filter(entity, query_spec.filter or {}):
+                results.append(entity)
 
         await self.emit(
             GraphEvent.QUERY_EXECUTED,
             metadata=EventMetadata(
-                query_spec=query_spec,
+                query_spec=query_spec.dict(),
                 operation_id=str(uuid4()),
                 timestamp=datetime.utcnow()
             ),
@@ -91,34 +189,34 @@ class MockBaseContext(BaseGraphContext):
         )
         return results
 
-    async def traverse(self, traversal_spec: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def traverse(
+        self,
+        start_entity: str,
+        traversal_spec: TraversalSpec
+    ) -> list[Entity]:
         """Execute a traversal."""
         self._call_count['traverse'] += 1
-        start_id = traversal_spec.get('start')
-        relation_type = traversal_spec.get('relation')
-        if not (start_id and relation_type):
+        relation_type = traversal_spec.relation_type
+        if not relation_type:
             return []
 
-        path = []
+        results = []
         for relation in self._relations.get(relation_type, {}).values():
-            if relation.source_id == start_id:
-                path = [
-                    {'id': start_id, 'type': 'entity'},
-                    {'id': relation.id, 'type': relation_type},
-                    {'id': relation.target_id, 'type': 'entity'}
-                ]
-                break
+            if relation.source_id == start_entity:
+                target_entity = await self.get_entity(relation.target_id)
+                if target_entity:
+                    results.append(target_entity)
 
         await self.emit(
             GraphEvent.TRAVERSAL_EXECUTED,
             metadata=EventMetadata(
-                traversal_spec=traversal_spec,
+                traversal_spec=traversal_spec.dict(),
                 operation_id=str(uuid4()),
                 timestamp=datetime.utcnow()
             ),
-            data={'path': path}
+            data={'results': results}
         )
-        return path
+        return results
 
     def _matches_filter(self, entity: Entity, filter_spec: Dict[str, Any]) -> bool:
         """Check if an entity matches a filter specification."""
@@ -126,6 +224,24 @@ class MockBaseContext(BaseGraphContext):
             if key not in entity.properties or entity.properties[key] != value:
                 return False
         return True
+
+    async def begin_transaction(self) -> None:
+        """Begin a new transaction."""
+        if self._in_transaction:
+            raise RuntimeError("Transaction already in progress")
+        self._in_transaction = True
+
+    async def commit_transaction(self) -> None:
+        """Commit the current transaction."""
+        if not self._in_transaction:
+            raise RuntimeError("No transaction in progress")
+        self._in_transaction = False
+
+    async def rollback_transaction(self) -> None:
+        """Rollback the current transaction."""
+        if not self._in_transaction:
+            raise RuntimeError("No transaction in progress")
+        self._in_transaction = False
 
 @pytest.fixture
 def base_context():

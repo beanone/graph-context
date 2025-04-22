@@ -21,7 +21,6 @@ class CacheEntry(BaseModel, Generic[T]):
     Attributes:
         value: The cached value
         created_at: When the entry was created
-        expires_at: When the entry expires (if TTL is used)
         entity_type: Type name for entity entries
         relation_type: Type name for relation entries
         operation_id: Unique identifier for the operation that created this entry
@@ -30,7 +29,6 @@ class CacheEntry(BaseModel, Generic[T]):
     """
     value: T
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    expires_at: Optional[datetime] = None
     entity_type: Optional[str] = None
     relation_type: Optional[str] = None
     operation_id: str = Field(default_factory=lambda: str(uuid4()))
@@ -68,11 +66,7 @@ class CacheStore:
             The cache entry if found and not expired, None otherwise
         """
         try:
-            entry = self._cache[key]
-            if entry.expires_at and entry.expires_at <= datetime.utcnow():
-                await self.delete(key)
-                return None
-            return entry
+            return self._cache[key]
         except KeyError:
             return None
 
@@ -138,7 +132,9 @@ class CacheStore:
         Args:
             keys: Set of cache keys to delete
         """
-        for key in keys:
+        # Create a copy of the keys to avoid mutation during iteration
+        keys_to_delete = set(keys)
+        for key in keys_to_delete:
             await self.delete(key)
 
     async def scan(self) -> AsyncIterator[Tuple[str, CacheEntry]]:
@@ -148,9 +144,6 @@ class CacheStore:
             Tuples of (key, entry) for each cache entry
         """
         for key, entry in self._cache.items():
-            if entry.expires_at and entry.expires_at <= datetime.utcnow():
-                await self.delete(key)
-                continue
             yield key, entry
 
     async def clear(self) -> None:
