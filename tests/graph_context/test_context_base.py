@@ -1,6 +1,9 @@
 from typing import Any, Optional, Dict
 
 import pytest
+import logging
+import hashlib
+import json
 
 from graph_context.context_base import BaseGraphContext
 from graph_context.exceptions import (
@@ -17,6 +20,7 @@ from graph_context.types.type_base import (
     RelationType,
 )
 
+logger = logging.getLogger(__name__)
 
 class TestGraphContext(BaseGraphContext):
     """Test implementation of BaseGraphContext."""
@@ -403,21 +407,36 @@ class TestGraphContext(BaseGraphContext):
 
     async def _query_impl(self, query_spec: dict[str, Any]) -> list[dict[str, Any]]:
         """Implementation method to execute a query."""
+        logger.debug(f"TestGraphContext executing query: {query_spec}")
         results = []
-        start = query_spec.get("start")
-        relation_type = query_spec.get("relation")
-        direction = query_spec.get("direction", "outbound")
 
-        relations = self._transaction_relations if self._in_transaction else self._relations
-        for rel_id, rel in relations.items():
-            if rel["type"] != relation_type:
-                continue
-            if direction == "outbound" and rel["from_entity"] == start:
-                results.append({"id": rel_id, **rel})
-            elif direction == "inbound" and rel["to_entity"] == start:
-                results.append({"id": rel_id, **rel})
-            elif direction == "any" and (rel["from_entity"] == start or rel["to_entity"] == start):
-                results.append({"id": rel_id, **rel})
+        # Handle type-based queries
+        if "type" in query_spec:
+            entity_type = query_spec["type"]
+            for entity_id, entity in self._entities.items():
+                if entity["type"] == entity_type:
+                    results.append({"id": entity_id, **entity})
+
+        # Handle relation-based queries
+        elif all(key in query_spec for key in ["start", "relation", "direction"]):
+            start_id = query_spec["start"]
+            relation_type = query_spec["relation"]
+            direction = query_spec["direction"]
+
+            for relation_id, relation in self._relations.items():
+                if ((direction in ["outgoing", "outbound"] and relation["from_entity"] == start_id and relation["type"] == relation_type) or
+                    (direction in ["incoming", "inbound"] and relation["to_entity"] == start_id and relation["type"] == relation_type)):
+                    results.append({"id": relation_id, **relation})
+
+        # Calculate query hash
+        query_str = json.dumps(query_spec, sort_keys=True)
+        query_hash = hashlib.sha256(query_str.encode()).hexdigest()
+
+        # Add query hash to results
+        for result in results:
+            result["query_hash"] = query_hash
+
+        logger.debug(f"TestGraphContext found {len(results)} results")
         return results
 
     async def _traverse_impl(self, start_entity: str, traversal_spec: dict[str, Any]) -> list[dict[str, Any]]:

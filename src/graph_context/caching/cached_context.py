@@ -187,14 +187,17 @@ class CachedGraphContext(GraphContext):
             The query results
         """
         await self._initialize()
+        logger.debug(f"Executing query with spec: {query_spec}")
 
         # Try to get from cache first
         query_hash = self._cache_manager._hash_query(query_spec)
         cached = await self._cache_manager.store_manager.get_query_store().get(query_hash)
         if cached is not None:
+            logger.debug(f"Query cache hit for hash {query_hash}")
             return cached.value
 
         # Fall back to base context
+        logger.debug("Query cache miss, executing on base context")
         result = await self._base.query(query_spec)
 
         # Cache the result
@@ -204,8 +207,16 @@ class CachedGraphContext(GraphContext):
                 query_hash=query_hash
             )
             await self._cache_manager.store_manager.get_query_store().set(query_hash, entry)
+            logger.debug(f"Cached query results with hash {query_hash}")
 
-        return result
+            # Notify cache manager about the query
+            await self._cache_manager.handle_event(EventContext(
+                event=GraphEvent.QUERY_EXECUTED,
+                data={"query_spec": query_spec, "query_hash": query_hash},
+                metadata=EventMetadata()
+            ))
+
+        return result or []  # Ensure we always return a list
 
     async def traverse(self, start_entity: str, traversal_spec: TraversalSpec) -> list[Entity]:
         """Execute a traversal in the graph.
