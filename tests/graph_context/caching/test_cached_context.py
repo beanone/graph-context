@@ -16,6 +16,7 @@ from graph_context.types.type_base import Entity, Relation
 from graph_context.context_base import BaseGraphContext
 from graph_context.exceptions import SchemaError
 from graph_context.types.type_base import EntityType, PropertyDefinition, RelationType
+from tests.graph_context.test_context_base import TestGraphContext
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -231,9 +232,26 @@ class MockBaseContext(BaseGraphContext):
 
 @pytest.fixture
 async def base_context():
-    """Create a mock base context for testing."""
-    context = MockBaseContext()
-    await context.initialize()
+    """Create a base context for testing."""
+    context = TestGraphContext()
+
+    # Register test types
+    await context.register_entity_type(EntityType(
+        name="person",
+        properties={
+            "name": PropertyDefinition(type="string", required=True),
+            "age": PropertyDefinition(type="integer", required=False)
+        }
+    ))
+    await context.register_relation_type(RelationType(
+        name="knows",
+        from_types=["person"],
+        to_types=["person"],
+        properties={
+            "since": PropertyDefinition(type="string", required=False)
+        }
+    ))
+
     return context
 
 
@@ -313,24 +331,35 @@ async def test_cache_invalidation(cached_context):
 @pytest.mark.asyncio
 async def test_transaction_behavior(cached_context):
     """Test that caching works correctly with transactions."""
+    logger.debug("Starting transaction behavior test")
+
     # Create an entity outside transaction
+    logger.debug("Creating initial entity")
     entity_id = await cached_context.create_entity("person", {"name": "Alice"})
+    logger.debug(f"Created entity with ID {entity_id}")
 
     # Start a transaction
+    logger.debug("Starting transaction")
     await cached_context.begin_transaction()
 
     # Update the entity in transaction
+    logger.debug("Updating entity in transaction")
     await cached_context.update_entity(entity_id, {"name": "Alice Smith"})
 
     # Get the entity - should see transaction changes
+    logger.debug("Getting entity to verify transaction changes")
     entity = await cached_context.get_entity(entity_id)
+    logger.debug(f"Got entity in transaction: {entity}")
     assert entity["properties"]["name"] == "Alice Smith"
 
     # Rollback the transaction
+    logger.debug("Rolling back transaction")
     await cached_context.rollback_transaction()
 
     # Get the entity - should see original state
+    logger.debug("Getting entity after rollback")
     entity = await cached_context.get_entity(entity_id)
+    logger.debug(f"Got entity after rollback: {entity}")
     assert entity["properties"]["name"] == "Alice"
 
 
