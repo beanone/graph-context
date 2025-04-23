@@ -27,6 +27,31 @@ class BaseGraphContext(GraphContext):
         self._relation_types: dict[str, RelationType] = {}
         self._in_transaction: bool = False
 
+    async def cleanup(self) -> None:
+        """
+        Clean up the graph context.
+
+        This method should be called when the context is no longer needed.
+        It cleans up internal state and type registries.
+
+        Note: Specific implementations should override this method to add
+        their own cleanup logic (e.g., closing connections, cleaning up
+        backend resources) while still calling super().cleanup().
+
+        Raises:
+            GraphContextError: If cleanup fails
+        """
+        # Rollback any active transaction
+        if self._in_transaction:
+            await self.rollback_transaction()
+
+        # Clear type registries
+        self._entity_types.clear()
+        self._relation_types.clear()
+
+        # Reset transaction state
+        self._in_transaction = False
+
     def register_entity_type(self, entity_type: EntityType) -> None:
         """
         Register an entity type in the schema.

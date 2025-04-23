@@ -73,11 +73,14 @@ class TestGraphContext(BaseGraphContext):
 
     async def cleanup(self) -> None:
         """Clean up resources."""
+        # Clear in-memory stores
         self._entities.clear()
         self._relations.clear()
         self._transaction_entities.clear()
         self._transaction_relations.clear()
-        self._in_transaction = False
+
+        # Call parent cleanup to handle type registries and transaction state
+        await super().cleanup()
 
     async def begin_transaction(self) -> None:
         """Begin a transaction."""
@@ -1245,6 +1248,67 @@ async def test_comprehensive_validation(empty_graph_context):
     pattern = re.compile(r'^[A-Za-z]+$')
     with pytest.raises(ValidationError):
         await empty_graph_context.validate_property("test_pattern", "123", {"pattern": pattern})
+
+@pytest.mark.asyncio
+async def test_cleanup(graph_context):
+    """Test cleanup behavior."""
+    # Setup: Create some entities and relations
+    person_id = await graph_context.create_entity(
+        entity_type="Person",
+        properties={"name": "Ada Lovelace"}
+    )
+    document_id = await graph_context.create_entity(
+        entity_type="Document",
+        properties={"title": "Notes"}
+    )
+    relation_id = await graph_context.create_relation(
+        relation_type="authored",
+        from_entity=person_id,
+        to_entity=document_id
+    )
+
+    # Start a transaction
+    await graph_context.begin_transaction()
+
+    # Verify initial state
+    assert graph_context._in_transaction is True
+    assert len(graph_context._entities) > 0
+    assert len(graph_context._relations) > 0
+    assert len(graph_context._entity_types) > 0
+    assert len(graph_context._relation_types) > 0
+
+    # Cleanup
+    await graph_context.cleanup()
+
+    # Verify cleanup
+    assert graph_context._in_transaction is False
+    assert len(graph_context._entities) == 0
+    assert len(graph_context._relations) == 0
+    assert len(graph_context._entity_types) == 0
+    assert len(graph_context._relation_types) == 0
+    assert len(graph_context._transaction_entities) == 0
+    assert len(graph_context._transaction_relations) == 0
+
+@pytest.mark.asyncio
+async def test_cleanup_idempotent(graph_context):
+    """Test that cleanup can be called multiple times safely."""
+    # Setup: Create an entity
+    await graph_context.create_entity(
+        entity_type="Person",
+        properties={"name": "Ada Lovelace"}
+    )
+
+    # Multiple cleanups should not raise errors
+    await graph_context.cleanup()
+    await graph_context.cleanup()
+    await graph_context.cleanup()
+
+    # Verify final state
+    assert graph_context._in_transaction is False
+    assert len(graph_context._entities) == 0
+    assert len(graph_context._relations) == 0
+    assert len(graph_context._entity_types) == 0
+    assert len(graph_context._relation_types) == 0
 
 class SimpleBaseGraphContext(BaseGraphContext):
     """A minimal implementation of BaseGraphContext for testing base functionality."""

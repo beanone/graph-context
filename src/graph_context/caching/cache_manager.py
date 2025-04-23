@@ -6,7 +6,6 @@ and event handling for the graph context.
 
 import time
 from typing import Any, Dict, Optional, Set
-from datetime import datetime
 
 from graph_context.event_system import GraphEvent
 from .cache_store import CacheStore, CacheEntry

@@ -1,8 +1,7 @@
 """Unit tests for the cache manager implementation."""
 
 import pytest
-from datetime import datetime, timedelta
-from typing import Dict, Any, Set
+from typing import Dict, Any
 
 from graph_context.caching.cache_manager import CacheManager
 from graph_context.caching.config import CacheConfig
