@@ -6,13 +6,14 @@ including a cached implementation of the graph context.
 
 from typing import Optional, Dict, Any, List
 
-from ..event_system import GraphEvent
+from ..event_system import GraphEvent, EventSystem
 from ..types.type_base import Entity, Relation
 from ..context_base import BaseGraphContext
 from .cache_store import CacheStore, CacheEntry
 from .cache_manager import CacheManager
+from .config import CacheConfig
 
-class CachedGraphContext(BaseGraphContext):
+class CachedGraphContext(BaseGraphContext, EventSystem):
     """A graph context implementation with caching support."""
 
     def __init__(
@@ -28,25 +29,27 @@ class CachedGraphContext(BaseGraphContext):
             max_size: Maximum number of entries in the cache
             ttl: Time-to-live in seconds for cache entries
         """
-        super().__init__()
+        BaseGraphContext.__init__(self)
+        EventSystem.__init__(self)
         self._base = base_context
-        self._cache_manager = CacheManager(max_size=max_size, ttl=ttl)
+        config = CacheConfig(max_size=max_size, default_ttl=ttl)
+        self._cache_manager = CacheManager(config=config)
 
-        # Subscribe to all relevant events
-        self._base.subscribe(GraphEvent.ENTITY_READ, self._cache_manager.handle_event)
-        self._base.subscribe(GraphEvent.ENTITY_WRITE, self._cache_manager.handle_event)
-        self._base.subscribe(GraphEvent.ENTITY_BULK_WRITE, self._cache_manager.handle_event)
-        self._base.subscribe(GraphEvent.ENTITY_DELETE, self._cache_manager.handle_event)
-        self._base.subscribe(GraphEvent.ENTITY_BULK_DELETE, self._cache_manager.handle_event)
-        self._base.subscribe(GraphEvent.RELATION_READ, self._cache_manager.handle_event)
-        self._base.subscribe(GraphEvent.RELATION_WRITE, self._cache_manager.handle_event)
-        self._base.subscribe(GraphEvent.RELATION_BULK_WRITE, self._cache_manager.handle_event)
-        self._base.subscribe(GraphEvent.RELATION_DELETE, self._cache_manager.handle_event)
-        self._base.subscribe(GraphEvent.RELATION_BULK_DELETE, self._cache_manager.handle_event)
-        self._base.subscribe(GraphEvent.QUERY_EXECUTED, self._cache_manager.handle_event)
-        self._base.subscribe(GraphEvent.TRAVERSAL_EXECUTED, self._cache_manager.handle_event)
-        self._base.subscribe(GraphEvent.SCHEMA_MODIFIED, self._cache_manager.handle_event)
-        self._base.subscribe(GraphEvent.TYPE_MODIFIED, self._cache_manager.handle_event)
+        # Subscribe cache manager to our own events
+        self.subscribe(GraphEvent.ENTITY_READ, self._cache_manager.handle_event)
+        self.subscribe(GraphEvent.ENTITY_WRITE, self._cache_manager.handle_event)
+        self.subscribe(GraphEvent.ENTITY_BULK_WRITE, self._cache_manager.handle_event)
+        self.subscribe(GraphEvent.ENTITY_DELETE, self._cache_manager.handle_event)
+        self.subscribe(GraphEvent.ENTITY_BULK_DELETE, self._cache_manager.handle_event)
+        self.subscribe(GraphEvent.RELATION_READ, self._cache_manager.handle_event)
+        self.subscribe(GraphEvent.RELATION_WRITE, self._cache_manager.handle_event)
+        self.subscribe(GraphEvent.RELATION_BULK_WRITE, self._cache_manager.handle_event)
+        self.subscribe(GraphEvent.RELATION_DELETE, self._cache_manager.handle_event)
+        self.subscribe(GraphEvent.RELATION_BULK_DELETE, self._cache_manager.handle_event)
+        self.subscribe(GraphEvent.QUERY_EXECUTED, self._cache_manager.handle_event)
+        self.subscribe(GraphEvent.TRAVERSAL_EXECUTED, self._cache_manager.handle_event)
+        self.subscribe(GraphEvent.SCHEMA_MODIFIED, self._cache_manager.handle_event)
+        self.subscribe(GraphEvent.TYPE_MODIFIED, self._cache_manager.handle_event)
 
     def enable_caching(self) -> None:
         """Enable caching."""

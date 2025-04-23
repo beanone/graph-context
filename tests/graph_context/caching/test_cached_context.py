@@ -15,8 +15,8 @@ class MockBaseContext(BaseGraphContext):
 
     def __init__(self):
         super().__init__()
-        self._entities: Dict[str, Dict[str, Entity]] = {}
-        self._relations: Dict[str, Dict[str, Relation]] = {}
+        self._entities: Dict[str, Dict[str, dict[str, Any]]] = {}
+        self._relations: Dict[str, Dict[str, dict[str, Any]]] = {}
         self._call_count: Dict[str, int] = {
             'get_entity': 0,
             'get_relation': 0,
@@ -25,223 +25,348 @@ class MockBaseContext(BaseGraphContext):
         }
         self._in_transaction = False
 
-    async def initialize(self) -> None:
-        """Initialize the context."""
-        pass
-
     async def cleanup(self) -> None:
         """Clean up resources."""
-        pass
+        self._entities.clear()
+        self._relations.clear()
+        self._call_count.clear()
+        self._in_transaction = False
+        await super().cleanup()
 
-    async def create_entity(self, entity_type: str, properties: dict[str, Any]) -> Entity:
-        """Create an entity in storage."""
+    async def _create_entity_impl(self, entity_type: str, properties: dict[str, Any]) -> str:
+        """Implementation method to create an entity."""
         if entity_type not in self._entities:
             self._entities[entity_type] = {}
         entity_id = str(uuid4())
-        entity = Entity(id=entity_id, type=entity_type, properties=properties)
+        entity = {
+            'id': entity_id,
+            'type': entity_type,
+            'properties': properties
+        }
         self._entities[entity_type][entity_id] = entity
         await self.emit(
-            GraphEvent.ENTITY_WRITE,
-            metadata=EventMetadata(
-                entity_type=entity_type,
-                operation_id=str(uuid4()),
-                timestamp=datetime.utcnow()
-            ),
-            data={'entity': entity, 'entity_id': entity_id}
+            EventContext(
+                event=GraphEvent.ENTITY_WRITE,
+                metadata=EventMetadata(
+                    entity_type=entity_type,
+                    operation_id=str(uuid4()),
+                    timestamp=datetime.utcnow()
+                ),
+                data={'entity': entity, 'entity_id': entity_id}
+            )
         )
-        return entity
+        return entity_id
 
-    async def get_entity(self, entity_id: str) -> Optional[Entity]:
-        """Get an entity from storage."""
+    async def _get_entity_impl(self, entity_id: str) -> Optional[dict[str, Any]]:
+        """Implementation method to get an entity."""
         self._call_count['get_entity'] += 1
         for entities in self._entities.values():
             if entity_id in entities:
                 return entities[entity_id]
         return None
 
-    async def update_entity(self, entity_id: str, properties: dict[str, Any]) -> Optional[Entity]:
-        """Update an entity in storage."""
+    async def _update_entity_impl(self, entity_id: str, properties: dict[str, Any]) -> bool:
+        """Implementation method to update an entity."""
         entity = await self.get_entity(entity_id)
         if not entity:
-            return None
+            return False
 
-        updated_entity = Entity(
-            id=entity_id,
-            type=entity.type,
-            properties={**entity.properties, **properties}
-        )
-        self._entities[entity.type][entity_id] = updated_entity
+        updated_entity = {
+            'id': entity_id,
+            'type': entity['type'],
+            'properties': {**entity['properties'], **properties}
+        }
+        self._entities[entity['type']][entity_id] = updated_entity
         await self.emit(
-            GraphEvent.ENTITY_WRITE,
-            metadata=EventMetadata(
-                entity_type=entity.type,
-                operation_id=str(uuid4()),
-                timestamp=datetime.utcnow()
-            ),
-            data={'entity': updated_entity, 'entity_id': entity_id}
+            EventContext(
+                event=GraphEvent.ENTITY_WRITE,
+                metadata=EventMetadata(
+                    entity_type=entity['type'],
+                    operation_id=str(uuid4()),
+                    timestamp=datetime.utcnow()
+                ),
+                data={'entity': updated_entity, 'entity_id': entity_id}
+            )
         )
-        return updated_entity
+        return True
 
-    async def delete_entity(self, entity_id: str) -> bool:
-        """Delete an entity from storage."""
+    async def _delete_entity_impl(self, entity_id: str) -> bool:
+        """Implementation method to delete an entity."""
         for entity_type, entities in self._entities.items():
             if entity_id in entities:
                 del entities[entity_id]
                 await self.emit(
-                    GraphEvent.ENTITY_DELETE,
-                    metadata=EventMetadata(
-                        entity_type=entity_type,
-                        operation_id=str(uuid4()),
-                        timestamp=datetime.utcnow()
-                    ),
-                    data={'entity_id': entity_id}
+                    EventContext(
+                        event=GraphEvent.ENTITY_DELETE,
+                        metadata=EventMetadata(
+                            entity_type=entity_type,
+                            operation_id=str(uuid4()),
+                            timestamp=datetime.utcnow()
+                        ),
+                        data={'entity_id': entity_id}
+                    )
                 )
                 return True
         return False
 
-    async def create_relation(
+    async def _create_relation_impl(
         self,
         relation_type: str,
         from_entity: str,
         to_entity: str,
         properties: dict[str, Any] | None = None
-    ) -> Relation:
-        """Create a relation in storage."""
+    ) -> str:
+        """Implementation method to create a relation."""
         if relation_type not in self._relations:
             self._relations[relation_type] = {}
         relation_id = str(uuid4())
-        relation = Relation(
-            id=relation_id,
-            type=relation_type,
-            source_id=from_entity,
-            target_id=to_entity,
-            properties=properties or {}
-        )
+        relation = {
+            'id': relation_id,
+            'type': relation_type,
+            'source_id': from_entity,
+            'target_id': to_entity,
+            'properties': properties or {}
+        }
         self._relations[relation_type][relation_id] = relation
         await self.emit(
-            GraphEvent.RELATION_WRITE,
-            metadata=EventMetadata(
-                relation_type=relation_type,
-                operation_id=str(uuid4()),
-                timestamp=datetime.utcnow()
-            ),
-            data={'relation': relation, 'relation_id': relation_id}
+            EventContext(
+                event=GraphEvent.RELATION_WRITE,
+                metadata=EventMetadata(
+                    relation_type=relation_type,
+                    operation_id=str(uuid4()),
+                    timestamp=datetime.utcnow()
+                ),
+                data={'relation': relation, 'relation_id': relation_id}
+            )
         )
-        return relation
+        return relation_id
 
-    async def get_relation(self, relation_id: str) -> Optional[Relation]:
-        """Get a relation from storage."""
+    async def _get_relation_impl(self, relation_id: str) -> Optional[dict[str, Any]]:
+        """Implementation method to get a relation."""
         self._call_count['get_relation'] += 1
         for relations in self._relations.values():
             if relation_id in relations:
                 return relations[relation_id]
         return None
 
-    async def update_relation(
+    async def _update_relation_impl(
         self,
         relation_id: str,
         properties: dict[str, Any]
-    ) -> Optional[Relation]:
-        """Update a relation in storage."""
+    ) -> bool:
+        """Implementation method to update a relation."""
         relation = await self.get_relation(relation_id)
         if not relation:
-            return None
+            return False
 
-        updated_relation = Relation(
-            id=relation_id,
-            type=relation.type,
-            source_id=relation.source_id,
-            target_id=relation.target_id,
-            properties={**relation.properties, **properties}
-        )
-        self._relations[relation.type][relation_id] = updated_relation
+        updated_relation = {
+            'id': relation_id,
+            'type': relation['type'],
+            'source_id': relation['source_id'],
+            'target_id': relation['target_id'],
+            'properties': {**relation['properties'], **properties}
+        }
+        self._relations[relation['type']][relation_id] = updated_relation
         await self.emit(
-            GraphEvent.RELATION_WRITE,
-            metadata=EventMetadata(
-                relation_type=relation.type,
-                operation_id=str(uuid4()),
-                timestamp=datetime.utcnow()
-            ),
-            data={'relation': updated_relation, 'relation_id': relation_id}
+            EventContext(
+                event=GraphEvent.RELATION_WRITE,
+                metadata=EventMetadata(
+                    relation_type=relation['type'],
+                    operation_id=str(uuid4()),
+                    timestamp=datetime.utcnow()
+                ),
+                data={'relation': updated_relation, 'relation_id': relation_id}
+            )
         )
-        return updated_relation
+        return True
 
-    async def query(self, query_spec: QuerySpec) -> list[Entity]:
-        """Execute a query."""
+    async def _delete_relation_impl(self, relation_id: str) -> bool:
+        """Implementation method to delete a relation."""
+        for relation_type, relations in self._relations.items():
+            if relation_id in relations:
+                del relations[relation_id]
+                return True
+        return False
+
+    async def _query_impl(self, query_spec: dict[str, Any]) -> list[dict[str, Any]]:
+        """Implementation method to execute a query."""
         self._call_count['query'] += 1
-        entity_type = query_spec.type
+        entity_type = query_spec.get('type')
         if not entity_type:
             return []
 
         results = []
         for entity_id, entity in self._entities.get(entity_type, {}).items():
-            if self._matches_filter(entity, query_spec.filter or {}):
+            if self._matches_filter(entity, query_spec.get('filter', {})):
                 results.append(entity)
 
         await self.emit(
-            GraphEvent.QUERY_EXECUTED,
-            metadata=EventMetadata(
-                query_spec=query_spec.dict(),
-                operation_id=str(uuid4()),
-                timestamp=datetime.utcnow()
-            ),
-            data={'results': results}
+            EventContext(
+                event=GraphEvent.QUERY_EXECUTED,
+                metadata=EventMetadata(
+                    query_spec=query_spec,
+                    operation_id=str(uuid4()),
+                    timestamp=datetime.utcnow()
+                ),
+                data={'results': results}
+            )
         )
         return results
 
-    async def traverse(
+    async def _traverse_impl(
         self,
         start_entity: str,
-        traversal_spec: TraversalSpec
-    ) -> list[Entity]:
-        """Execute a traversal."""
+        traversal_spec: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        """Implementation method to execute a traversal."""
         self._call_count['traverse'] += 1
-        relation_type = traversal_spec.relation_type
+        relation_type = traversal_spec.get('relation_type')
         if not relation_type:
             return []
 
         results = []
-        for relation in self._relations.get(relation_type, {}).values():
-            if relation.source_id == start_entity:
-                target_entity = await self.get_entity(relation.target_id)
-                if target_entity:
-                    results.append(target_entity)
+        visited = set()
+        max_depth = traversal_spec.get('max_depth', 1)
+        direction = traversal_spec.get('direction', 'outbound')
 
+        def add_to_results(entity_id: str, depth: int) -> None:
+            if depth > max_depth or entity_id in visited:
+                return
+            visited.add(entity_id)
+            for rel_type, relations in self._relations.items():
+                if relation_type and rel_type != relation_type:
+                    continue
+                for relation in relations.values():
+                    next_id = None
+                    if direction in ('outbound', 'any') and relation['source_id'] == entity_id:
+                        next_id = relation['target_id']
+                    elif direction in ('inbound', 'any') and relation['target_id'] == entity_id:
+                        next_id = relation['source_id']
+                    if next_id and next_id not in visited:
+                        entity = self.get_entity(next_id)
+                        if entity:
+                            results.append(entity)
+                            add_to_results(next_id, depth + 1)
+
+        add_to_results(start_entity, 1)
         await self.emit(
-            GraphEvent.TRAVERSAL_EXECUTED,
-            metadata=EventMetadata(
-                traversal_spec=traversal_spec.dict(),
-                operation_id=str(uuid4()),
-                timestamp=datetime.utcnow()
-            ),
-            data={'results': results}
+            EventContext(
+                event=GraphEvent.TRAVERSAL_EXECUTED,
+                metadata=EventMetadata(
+                    traversal_spec=traversal_spec,
+                    operation_id=str(uuid4()),
+                    timestamp=datetime.utcnow()
+                ),
+                data={'results': results}
+            )
         )
         return results
 
-    def _matches_filter(self, entity: Entity, filter_spec: Dict[str, Any]) -> bool:
+    def _matches_filter(self, entity: dict[str, Any], filter_spec: Dict[str, Any]) -> bool:
         """Check if an entity matches a filter specification."""
         for key, value in filter_spec.items():
-            if key not in entity.properties or entity.properties[key] != value:
+            if key not in entity['properties'] or entity['properties'][key] != value:
                 return False
         return True
 
     async def begin_transaction(self) -> None:
-        """Begin a new transaction."""
-        if self._in_transaction:
-            raise RuntimeError("Transaction already in progress")
+        """Begin a transaction."""
         self._in_transaction = True
+        await self.emit(
+            EventContext(
+                event=GraphEvent.TRANSACTION_BEGIN,
+                metadata=EventMetadata(
+                    operation_id=str(uuid4()),
+                    timestamp=datetime.utcnow()
+                ),
+                data={}
+            )
+        )
 
     async def commit_transaction(self) -> None:
-        """Commit the current transaction."""
-        if not self._in_transaction:
-            raise RuntimeError("No transaction in progress")
+        """Commit a transaction."""
         self._in_transaction = False
+        await self.emit(
+            EventContext(
+                event=GraphEvent.TRANSACTION_COMMIT,
+                metadata=EventMetadata(
+                    operation_id=str(uuid4()),
+                    timestamp=datetime.utcnow()
+                ),
+                data={}
+            )
+        )
 
     async def rollback_transaction(self) -> None:
-        """Rollback the current transaction."""
-        if not self._in_transaction:
-            raise RuntimeError("No transaction in progress")
+        """Rollback a transaction."""
         self._in_transaction = False
+        await self.emit(
+            EventContext(
+                event=GraphEvent.TRANSACTION_ROLLBACK,
+                metadata=EventMetadata(
+                    operation_id=str(uuid4()),
+                    timestamp=datetime.utcnow()
+                ),
+                data={}
+            )
+        )
+
+class TestCachedGraphContext(CachedGraphContext):
+    """Concrete implementation of CachedGraphContext for testing."""
+
+    async def _create_entity_impl(self, entity_type: str, properties: dict[str, Any]) -> str:
+        """Implementation method to create an entity."""
+        return await self.base_context._create_entity_impl(entity_type, properties)
+
+    async def _get_entity_impl(self, entity_id: str) -> Optional[dict[str, Any]]:
+        """Implementation method to get an entity."""
+        return await self.base_context._get_entity_impl(entity_id)
+
+    async def _update_entity_impl(self, entity_id: str, properties: dict[str, Any]) -> bool:
+        """Implementation method to update an entity."""
+        return await self.base_context._update_entity_impl(entity_id, properties)
+
+    async def _delete_entity_impl(self, entity_id: str) -> bool:
+        """Implementation method to delete an entity."""
+        return await self.base_context._delete_entity_impl(entity_id)
+
+    async def _create_relation_impl(
+        self,
+        relation_type: str,
+        from_entity: str,
+        to_entity: str,
+        properties: dict[str, Any] | None = None
+    ) -> str:
+        """Implementation method to create a relation."""
+        return await self.base_context._create_relation_impl(relation_type, from_entity, to_entity, properties)
+
+    async def _get_relation_impl(self, relation_id: str) -> Optional[dict[str, Any]]:
+        """Implementation method to get a relation."""
+        return await self.base_context._get_relation_impl(relation_id)
+
+    async def _update_relation_impl(
+        self,
+        relation_id: str,
+        properties: dict[str, Any]
+    ) -> bool:
+        """Implementation method to update a relation."""
+        return await self.base_context._update_relation_impl(relation_id, properties)
+
+    async def _delete_relation_impl(self, relation_id: str) -> bool:
+        """Implementation method to delete a relation."""
+        return await self.base_context._delete_relation_impl(relation_id)
+
+    async def _query_impl(self, query_spec: dict[str, Any]) -> list[dict[str, Any]]:
+        """Implementation method to execute a query."""
+        return await self.base_context._query_impl(query_spec)
+
+    async def _traverse_impl(
+        self,
+        start_entity: str,
+        traversal_spec: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        """Implementation method to execute a traversal."""
+        return await self.base_context._traverse_impl(start_entity, traversal_spec)
 
 @pytest.fixture
 def base_context():
@@ -251,70 +376,75 @@ def base_context():
 @pytest.fixture
 def cached_context(base_context):
     """Create a cached context with the mock base."""
-    return CachedGraphContext(base_context=base_context)
+    return TestCachedGraphContext(base_context=base_context)
 
 @pytest.fixture
-def sample_entity():
-    """Create a sample entity."""
-    return Entity(id="test123", type="person", properties={"name": "Test Person"})
+def sample_properties():
+    """Create sample entity properties."""
+    return {"name": "Test Person", "age": 30}
 
 @pytest.fixture
-def sample_relation():
-    """Create a sample relation."""
-    return Relation(
-        id="rel123",
-        type="knows",
-        source_id="person1",
-        target_id="person2",
-        properties={}
-    )
+def sample_relation_properties():
+    """Create sample relation properties."""
+    return {"since": "2024-01-01"}
 
 @pytest.mark.asyncio
-async def test_entity_caching(cached_context, base_context, sample_entity):
+async def test_entity_caching(cached_context, base_context, sample_properties):
     """Test entity caching behavior."""
     # Create an entity
-    entity_id = await cached_context.create_entity("person", sample_entity)
+    entity = await cached_context.create_entity("person", sample_properties)
+    entity_id = entity.id
 
     # First read should hit the base context
     initial_count = base_context._call_count['get_entity']
-    entity1 = await cached_context.get_entity("person", entity_id)
+    entity1 = await cached_context.get_entity(entity_id)
     assert entity1 is not None
     assert base_context._call_count['get_entity'] > initial_count
 
     # Second read should hit the cache
     initial_count = base_context._call_count['get_entity']
-    entity2 = await cached_context.get_entity("person", entity_id)
+    entity2 = await cached_context.get_entity(entity_id)
     assert entity2 is not None
     assert entity2 == entity1
     assert base_context._call_count['get_entity'] == initial_count
 
 @pytest.mark.asyncio
-async def test_relation_caching(cached_context, base_context, sample_relation):
+async def test_relation_caching(cached_context, base_context, sample_relation_properties):
     """Test relation caching behavior."""
+    # Create two entities to relate
+    entity1 = await cached_context.create_entity("person", {"name": "Person 1"})
+    entity2 = await cached_context.create_entity("person", {"name": "Person 2"})
+
     # Create a relation
-    relation_id = await cached_context.create_relation("knows", sample_relation)
+    relation = await cached_context.create_relation(
+        "knows",
+        entity1.id,
+        entity2.id,
+        sample_relation_properties
+    )
+    relation_id = relation.id
 
     # First read should hit the base context
     initial_count = base_context._call_count['get_relation']
-    relation1 = await cached_context.get_relation("knows", relation_id)
+    relation1 = await cached_context.get_relation(relation_id)
     assert relation1 is not None
     assert base_context._call_count['get_relation'] > initial_count
 
     # Second read should hit the cache
     initial_count = base_context._call_count['get_relation']
-    relation2 = await cached_context.get_relation("knows", relation_id)
+    relation2 = await cached_context.get_relation(relation_id)
     assert relation2 is not None
     assert relation2 == relation1
     assert base_context._call_count['get_relation'] == initial_count
 
 @pytest.mark.asyncio
-async def test_query_caching(cached_context, base_context, sample_entity):
+async def test_query_caching(cached_context, base_context, sample_properties):
     """Test query result caching."""
     # Create some test data
-    await cached_context.create_entity("person", sample_entity)
+    await cached_context.create_entity("person", sample_properties)
 
     # Execute query first time
-    query_spec = {"type": "person", "filter": {"name": "Test Person"}}
+    query_spec = QuerySpec(type="person", filter={"name": "Test Person"})
     initial_count = base_context._call_count['query']
     results1 = await cached_context.query(query_spec)
     assert len(results1) > 0
@@ -327,109 +457,120 @@ async def test_query_caching(cached_context, base_context, sample_entity):
     assert base_context._call_count['query'] == initial_count
 
 @pytest.mark.asyncio
-async def test_traversal_caching(cached_context, base_context, sample_relation):
+async def test_traversal_caching(cached_context, base_context, sample_relation_properties):
     """Test traversal result caching."""
     # Create test data
-    relation_id = await cached_context.create_relation("knows", sample_relation)
+    entity1 = await cached_context.create_entity("person", {"name": "Person 1"})
+    entity2 = await cached_context.create_entity("person", {"name": "Person 2"})
+    relation = await cached_context.create_relation(
+        "knows",
+        entity1.id,
+        entity2.id,
+        sample_relation_properties
+    )
 
     # Execute traversal first time
-    traversal_spec = {
-        "start": sample_relation.source_id,
-        "relation": "knows"
-    }
+    traversal_spec = TraversalSpec(
+        relation_type="knows",
+        direction="outbound"
+    )
     initial_count = base_context._call_count['traverse']
-    path1 = await cached_context.traverse(traversal_spec)
-    assert len(path1) > 0
+    results1 = await cached_context.traverse(entity1.id, traversal_spec)
+    assert len(results1) > 0
     assert base_context._call_count['traverse'] > initial_count
 
     # Execute same traversal again
     initial_count = base_context._call_count['traverse']
-    path2 = await cached_context.traverse(traversal_spec)
-    assert path2 == path1
+    results2 = await cached_context.traverse(entity1.id, traversal_spec)
+    assert results2 == results1
     assert base_context._call_count['traverse'] == initial_count
 
 @pytest.mark.asyncio
-async def test_cache_invalidation(cached_context, base_context, sample_entity):
+async def test_cache_invalidation(cached_context, base_context, sample_properties):
     """Test cache invalidation on updates."""
     # Create and cache an entity
-    entity_id = await cached_context.create_entity("person", sample_entity)
-    await cached_context.get_entity("person", entity_id)  # Cache it
+    entity = await cached_context.create_entity("person", sample_properties)
+    entity_id = entity.id
+    await cached_context.get_entity(entity_id)  # Cache it
 
     # Update the entity
-    updated_entity = Entity(
-        id=entity_id,
-        type="person",
-        properties={"name": "Updated Person"}
-    )
-    await cached_context.update_entity("person", entity_id, updated_entity)
+    updated_properties = {**sample_properties, "name": "Updated Person"}
+    await cached_context.update_entity(entity_id, updated_properties)
 
     # Next read should hit base context
     initial_count = base_context._call_count['get_entity']
-    entity = await cached_context.get_entity("person", entity_id)
+    entity = await cached_context.get_entity(entity_id)
     assert entity is not None
     assert entity.properties["name"] == "Updated Person"
     assert base_context._call_count['get_entity'] > initial_count
 
 @pytest.mark.asyncio
-async def test_cache_enable_disable(cached_context, base_context, sample_entity):
+async def test_cache_enable_disable(cached_context, base_context, sample_properties):
     """Test enabling and disabling the cache."""
     # Create test data
-    entity_id = await cached_context.create_entity("person", sample_entity)
+    entity = await cached_context.create_entity("person", sample_properties)
+    entity_id = entity.id
 
     # Cache should be enabled by default
     initial_count = base_context._call_count['get_entity']
-    await cached_context.get_entity("person", entity_id)
+    await cached_context.get_entity(entity_id)
     second_count = base_context._call_count['get_entity']
-    await cached_context.get_entity("person", entity_id)
+    await cached_context.get_entity(entity_id)
     assert base_context._call_count['get_entity'] == second_count
 
     # Disable cache
     cached_context.disable_caching()
     initial_count = base_context._call_count['get_entity']
-    await cached_context.get_entity("person", entity_id)
+    await cached_context.get_entity(entity_id)
     assert base_context._call_count['get_entity'] > initial_count
 
     # Re-enable cache
     cached_context.enable_caching()
     initial_count = base_context._call_count['get_entity']
-    await cached_context.get_entity("person", entity_id)
+    await cached_context.get_entity(entity_id)
     second_count = base_context._call_count['get_entity']
-    await cached_context.get_entity("person", entity_id)
+    await cached_context.get_entity(entity_id)
     assert base_context._call_count['get_entity'] == second_count
 
 @pytest.mark.asyncio
-async def test_bulk_operations(cached_context, base_context):
-    """Test caching with bulk operations."""
-    # Create multiple entities
-    entities = [
-        Entity(id=f"test{i}", type="person", properties={"name": f"Person {i}"})
-        for i in range(3)
-    ]
+async def test_transaction_behavior(cached_context, base_context, sample_properties):
+    """Test caching behavior within transactions."""
+    # Start a transaction
+    await cached_context.begin_transaction()
 
-    # Bulk create
-    entity_ids = await cached_context.bulk_create_entities("person", entities)
+    # Create an entity in the transaction
+    entity = await cached_context.create_entity("person", sample_properties)
+    entity_id = entity.id
 
-    # First reads should hit base context
+    # Should be able to read the entity within the transaction
+    entity1 = await cached_context.get_entity(entity_id)
+    assert entity1 is not None
+    assert entity1.properties == sample_properties
+
+    # Commit the transaction
+    await cached_context.commit_transaction()
+
+    # Should still be able to read the entity after commit
+    entity2 = await cached_context.get_entity(entity_id)
+    assert entity2 is not None
+    assert entity2 == entity1
+
+@pytest.mark.asyncio
+async def test_delete_invalidation(cached_context, base_context, sample_properties):
+    """Test cache invalidation on delete."""
+    # Create and cache an entity
+    entity = await cached_context.create_entity("person", sample_properties)
+    entity_id = entity.id
+
+    # Cache the entity
+    await cached_context.get_entity(entity_id)
+
+    # Delete the entity
+    success = await cached_context.delete_entity(entity_id)
+    assert success is True
+
+    # Next read should hit base context and return None
     initial_count = base_context._call_count['get_entity']
-    for entity_id in entity_ids:
-        await cached_context.get_entity("person", entity_id)
-    assert base_context._call_count['get_entity'] > initial_count
-
-    # Second reads should hit cache
-    initial_count = base_context._call_count['get_entity']
-    for entity_id in entity_ids:
-        await cached_context.get_entity("person", entity_id)
-    assert base_context._call_count['get_entity'] == initial_count
-
-    # Bulk update should invalidate cache
-    updates = [
-        {"id": entity_id, "name": f"Updated Person {i}"}
-        for i, entity_id in enumerate(entity_ids)
-    ]
-    await cached_context.bulk_update_entities("person", updates)
-
-    # Next reads should hit base context again
-    initial_count = base_context._call_count['get_entity']
-    for entity_id in entity_ids:
-        await cached_context.get_entity("person", entity_id)
+    result = await cached_context.get_entity(entity_id)
+    assert result is None
     assert base_context._call_count['get_entity'] > initial_count

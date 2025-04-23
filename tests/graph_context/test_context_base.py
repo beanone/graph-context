@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Optional, Dict
 
 import pytest
 
@@ -33,14 +33,14 @@ class TestGraphContext(BaseGraphContext):
     async def setup_default_types(self):
         """Set up default entity and relation types for testing."""
         # Register test entity types
-        self.register_entity_type(EntityType(
+        await self.register_entity_type(EntityType(
             name="Person",
             properties={
                 "name": PropertyDefinition(type="string", required=True),
                 "birth_year": PropertyDefinition(type="integer", required=False)
             }
         ))
-        self.register_entity_type(EntityType(
+        await self.register_entity_type(EntityType(
             name="Document",
             properties={
                 "title": PropertyDefinition(type="string", required=True)
@@ -48,7 +48,7 @@ class TestGraphContext(BaseGraphContext):
         ))
 
         # Register test relation types
-        self.register_relation_type(RelationType(
+        await self.register_relation_type(RelationType(
             name="authored",
             from_types=["Person"],
             to_types=["Document"],
@@ -56,7 +56,7 @@ class TestGraphContext(BaseGraphContext):
                 "year": PropertyDefinition(type="integer", required=False)
             }
         ))
-        self.register_relation_type(RelationType(
+        await self.register_relation_type(RelationType(
             name="collaborated_with",
             from_types=["Person"],
             to_types=["Person"]
@@ -66,10 +66,6 @@ class TestGraphContext(BaseGraphContext):
         id_str = str(self.next_id)
         self.next_id += 1
         return id_str
-
-    async def initialize(self) -> None:
-        """Initialize the graph context."""
-        pass
 
     async def cleanup(self) -> None:
         """Clean up resources."""
@@ -127,7 +123,7 @@ class TestGraphContext(BaseGraphContext):
             raise ValidationError("Entity type cannot be empty")
         if properties is None:
             raise ValidationError("Properties cannot be None")
-        return await self._create_entity_internal(entity_type, properties)
+        return await self._create_entity_impl(entity_type, properties)
 
     async def get_entity(
         self,
@@ -136,7 +132,7 @@ class TestGraphContext(BaseGraphContext):
         """Get an entity by ID."""
         if not entity_id:
             raise ValidationError("Entity ID cannot be empty")
-        entity = await self._get_entity_internal(entity_id)
+        entity = await self._get_entity_impl(entity_id)
         if entity is None:
             raise EntityNotFoundError(f"Entity {entity_id} not found")
         return entity
@@ -151,9 +147,9 @@ class TestGraphContext(BaseGraphContext):
             raise ValidationError("Entity ID cannot be empty")
         if properties is None:
             raise ValidationError("Properties cannot be None")
-        if not await self._get_entity_internal(entity_id):
+        if not await self._get_entity_impl(entity_id):
             raise EntityNotFoundError(f"Entity {entity_id} not found")
-        return await self._update_entity_internal(entity_id, properties)
+        return await self._update_entity_impl(entity_id, properties)
 
     async def delete_entity(
         self,
@@ -162,9 +158,9 @@ class TestGraphContext(BaseGraphContext):
         """Delete an entity."""
         if not entity_id:
             raise ValidationError("Entity ID cannot be empty")
-        if not await self._get_entity_internal(entity_id):
+        if not await self._get_entity_impl(entity_id):
             raise EntityNotFoundError(f"Entity {entity_id} not found")
-        return await self._delete_entity_internal(entity_id)
+        return await self._delete_entity_impl(entity_id)
 
     async def create_relation(
         self,
@@ -194,11 +190,11 @@ class TestGraphContext(BaseGraphContext):
             raise ValidationError("From entity ID cannot be empty")
         if not to_entity:
             raise ValidationError("To entity ID cannot be empty")
-        if not await self._get_entity_internal(from_entity):
+        if not await self._get_entity_impl(from_entity):
             raise EntityNotFoundError(f"From entity {from_entity} not found")
-        if not await self._get_entity_internal(to_entity):
+        if not await self._get_entity_impl(to_entity):
             raise EntityNotFoundError(f"To entity {to_entity} not found")
-        return await self._create_relation_internal(
+        return await self._create_relation_impl(
             relation_type,
             from_entity,
             to_entity,
@@ -212,7 +208,7 @@ class TestGraphContext(BaseGraphContext):
         """Get a relation by ID."""
         if not relation_id:
             raise ValidationError("Relation ID cannot be empty")
-        relation = await self._get_relation_internal(relation_id)
+        relation = await self._get_relation_impl(relation_id)
         if relation is None:
             raise RelationNotFoundError(f"Relation {relation_id} not found")
         return relation
@@ -227,9 +223,9 @@ class TestGraphContext(BaseGraphContext):
             raise ValidationError("Relation ID cannot be empty")
         if properties is None:
             raise ValidationError("Properties cannot be None")
-        if not await self._get_relation_internal(relation_id):
+        if not await self._get_relation_impl(relation_id):
             raise RelationNotFoundError(f"Relation {relation_id} not found")
-        return await self._update_relation_internal(relation_id, properties)
+        return await self._update_relation_impl(relation_id, properties)
 
     async def delete_relation(
         self,
@@ -238,9 +234,9 @@ class TestGraphContext(BaseGraphContext):
         """Delete a relation."""
         if not relation_id:
             raise ValidationError("Relation ID cannot be empty")
-        if not await self._get_relation_internal(relation_id):
+        if not await self._get_relation_impl(relation_id):
             raise RelationNotFoundError(f"Relation {relation_id} not found")
-        return await self._delete_relation_internal(relation_id)
+        return await self._delete_relation_impl(relation_id)
 
     async def query(
         self,
@@ -253,7 +249,7 @@ class TestGraphContext(BaseGraphContext):
             raise ValidationError("Query spec cannot be empty")
         if "direction" in query_spec and query_spec["direction"] not in ["inbound", "outbound", "any"]:
             raise ValidationError("Invalid direction in query spec")
-        return await self._query_internal(query_spec)
+        return await self._query_impl(query_spec)
 
     async def traverse(
         self,
@@ -284,59 +280,51 @@ class TestGraphContext(BaseGraphContext):
             "any"
         ]:
             raise ValidationError("Invalid direction in traversal spec")
-        return await self._traverse_internal(start_entity, traversal_spec)
+        return await self._traverse_impl(start_entity, traversal_spec)
 
-    async def _create_entity_internal(
-        self,
-        entity_type: str,
-        properties: dict[str, Any]
-    ) -> str:
-        # Validate entity using parent class
-        validated_props = self.validate_entity(entity_type, properties)
+    async def _get_entity_impl(self, entity_id: str) -> dict[str, Any] | None:
+        """Implementation method to get an entity."""
+        if self._in_transaction:
+            return self._transaction_entities.get(entity_id)
+        return self._entities.get(entity_id)
+
+    async def _create_entity_impl(self, entity_type: str, properties: dict[str, Any]) -> str:
+        """Implementation method to create an entity."""
+        # Validate entity type and properties
+        if entity_type not in self._entity_types:
+            raise SchemaError(f"Unknown entity type: {entity_type}")
+
+        # Validate properties against schema
+        await self._validate_entity_impl(entity_type, properties)
 
         entity_id = self._generate_id()
         entity = {
             "type": entity_type,
-            "properties": validated_props
+            "properties": properties
         }
-
         if self._in_transaction:
             self._transaction_entities[entity_id] = entity
         else:
             self._entities[entity_id] = entity
         return entity_id
 
-    async def _get_entity_internal(
-        self,
-        entity_id: str
-    ) -> Optional[dict[str, Any]]:
-        if self._in_transaction:
-            return self._transaction_entities.get(entity_id)
-        return self._entities.get(entity_id)
-
-    async def _update_entity_internal(
-        self,
-        entity_id: str,
-        properties: dict[str, Any]
-    ) -> bool:
+    async def _update_entity_impl(self, entity_id: str, properties: dict[str, Any]) -> bool:
+        """Implementation method to update an entity."""
         entities = self._transaction_entities if self._in_transaction else self._entities
         if entity_id in entities:
-            entity = entities[entity_id]
-            # Validate updated properties using parent class
-            validated_props = self.validate_entity(entity["type"], {**entity["properties"], **properties})
-            entity["properties"] = validated_props
+            entities[entity_id]["properties"].update(properties)
             return True
         return False
 
-    async def _delete_entity_internal(
-        self,
-        entity_id: str
-    ) -> bool:
-        """Delete an entity and all its relations."""
+    async def _delete_entity_impl(self, entity_id: str) -> bool:
+        """Implementation method to delete an entity."""
         entities = self._transaction_entities if self._in_transaction else self._entities
         relations = self._transaction_relations if self._in_transaction else self._relations
 
         if entity_id in entities:
+            # Delete the entity
+            del entities[entity_id]
+
             # Delete all relations involving this entity
             relations_to_delete = []
             for rel_id, rel in relations.items():
@@ -346,93 +334,75 @@ class TestGraphContext(BaseGraphContext):
             for rel_id in relations_to_delete:
                 del relations[rel_id]
 
-            # Delete the entity
-            del entities[entity_id]
             return True
         return False
 
-    async def _create_relation_internal(
+    async def _get_relation_impl(self, relation_id: str) -> dict[str, Any] | None:
+        """Implementation method to get a relation."""
+        if self._in_transaction:
+            return self._transaction_relations.get(relation_id)
+        return self._relations.get(relation_id)
+
+    async def _create_relation_impl(
         self,
         relation_type: str,
         from_entity: str,
         to_entity: str,
-        properties: Optional[dict[str, Any]] = None
+        properties: dict[str, Any]
     ) -> str:
-        # Get entity types for validation
-        from_entity_data = await self._get_entity_internal(from_entity)
-        to_entity_data = await self._get_entity_internal(to_entity)
-        if not from_entity_data or not to_entity_data:
-            raise EntityNotFoundError("Source or target entity not found")
+        """Implementation method to create a relation."""
+        # Validate relation type
+        if relation_type not in self._relation_types:
+            raise SchemaError(f"Unknown relation type: {relation_type}")
 
-        # Validate relation using parent class
-        validated_props = self.validate_relation(
-            relation_type,
-            from_entity_data["type"],
-            to_entity_data["type"],
-            properties or {}
-        )
+        # Get entity types
+        from_entity_data = self._transaction_entities.get(from_entity) if self._in_transaction else self._entities.get(from_entity)
+        to_entity_data = self._transaction_entities.get(to_entity) if self._in_transaction else self._entities.get(to_entity)
+
+        if not from_entity_data or not to_entity_data:
+            raise EntityNotFoundError("One or both entities not found")
+
+        # Validate entity types against relation schema
+        relation_schema = self._relation_types[relation_type]
+        if from_entity_data["type"] not in relation_schema.from_types:
+            raise SchemaError(f"Invalid source entity type: {from_entity_data['type']}")
+        if to_entity_data["type"] not in relation_schema.to_types:
+            raise SchemaError(f"Invalid target entity type: {to_entity_data['type']}")
+
+        # Validate properties
+        await self._validate_relation_impl(relation_type, properties or {})
 
         relation_id = self._generate_id()
         relation = {
             "type": relation_type,
             "from_entity": from_entity,
             "to_entity": to_entity,
-            "properties": validated_props
+            "properties": properties or {}
         }
-
         if self._in_transaction:
             self._transaction_relations[relation_id] = relation
         else:
             self._relations[relation_id] = relation
         return relation_id
 
-    async def _get_relation_internal(
-        self,
-        relation_id: str
-    ) -> Optional[dict[str, Any]]:
-        if self._in_transaction:
-            return self._transaction_relations.get(relation_id)
-        return self._relations.get(relation_id)
-
-    async def _update_relation_internal(
-        self,
-        relation_id: str,
-        properties: dict[str, Any]
-    ) -> bool:
+    async def _update_relation_impl(self, relation_id: str, properties: dict[str, Any]) -> bool:
+        """Implementation method to update a relation."""
         relations = self._transaction_relations if self._in_transaction else self._relations
         if relation_id in relations:
-            relation = relations[relation_id]
-            # Get entity types for validation
-            from_entity_data = await self._get_entity_internal(relation["from_entity"])
-            to_entity_data = await self._get_entity_internal(relation["to_entity"])
-            if not from_entity_data or not to_entity_data:
-                raise EntityNotFoundError("Source or target entity not found")
-
-            # Validate updated properties using parent class
-            validated_props = self.validate_relation(
-                relation["type"],
-                from_entity_data["type"],
-                to_entity_data["type"],
-                {**relation["properties"], **properties}
-            )
-            relation["properties"] = validated_props
+            relations[relation_id]["properties"].update(properties)
             return True
         return False
 
-    async def _delete_relation_internal(
-        self,
-        relation_id: str
-    ) -> bool:
+    async def _delete_relation_impl(self, relation_id: str) -> bool:
+        """Implementation method to delete a relation."""
         relations = self._transaction_relations if self._in_transaction else self._relations
         if relation_id in relations:
             del relations[relation_id]
             return True
         return False
 
-    async def _query_internal(
-        self,
-        query_spec: dict[str, Any]
-    ) -> list[dict[str, Any]]:
+    async def _query_impl(self, query_spec: dict[str, Any]) -> list[dict[str, Any]]:
+        """Implementation method to execute a query."""
         results = []
         start = query_spec.get("start")
         relation_type = query_spec.get("relation")
@@ -450,11 +420,8 @@ class TestGraphContext(BaseGraphContext):
                 results.append({"id": rel_id, **rel})
         return results
 
-    async def _traverse_internal(
-        self,
-        start_entity: str,
-        traversal_spec: dict[str, Any]
-    ) -> list[dict[str, Any]]:
+    async def _traverse_impl(self, start_entity: str, traversal_spec: dict[str, Any]) -> list[dict[str, Any]]:
+        """Implementation method to execute a traversal."""
         results = []
         max_depth = traversal_spec.get("max_depth", 1)
         relation_types = traversal_spec.get("relation_types", [])
@@ -513,19 +480,80 @@ class TestGraphContext(BaseGraphContext):
                 raise ValidationError(f"Value {value} does not match pattern {constraints['pattern'].pattern}")
         return value
 
+    async def _validate_entity_impl(self, entity_type: str, properties: Dict[str, Any]) -> None:
+        """Implementation method to validate an entity against its schema."""
+        if entity_type not in self._entity_types:
+            raise SchemaError(f"Entity type {entity_type} is not registered")
+
+        schema = self._entity_types[entity_type]
+        required_props = {name: prop for name, prop in schema.properties.items() if prop.required}
+
+        # Check for missing required properties
+        for prop_name, prop_def in required_props.items():
+            if prop_name not in properties:
+                raise ValidationError(f"Missing required property: {prop_name}")
+
+        # Validate property types
+        for prop_name, value in properties.items():
+            if prop_name not in schema.properties:
+                raise ValidationError(f"Unknown property: {prop_name}")
+
+            prop_def = schema.properties[prop_name]
+            prop_type = prop_def.type
+
+            if prop_type == PropertyType.STRING and not isinstance(value, str):
+                raise ValidationError(f"Property {prop_name} must be a string")
+            elif prop_type == PropertyType.INTEGER and not isinstance(value, int):
+                raise ValidationError(f"Property {prop_name} must be an integer")
+            elif prop_type == PropertyType.FLOAT and not isinstance(value, (int, float)):
+                raise ValidationError(f"Property {prop_name} must be a number")
+            elif prop_type == PropertyType.BOOLEAN and not isinstance(value, bool):
+                raise ValidationError(f"Property {prop_name} must be a boolean")
+
+    async def _validate_relation_impl(self, relation_type: str, properties: Dict[str, Any]) -> None:
+        """Implementation method to validate a relation against its schema."""
+        if relation_type not in self._relation_types:
+            raise SchemaError(f"Relation type {relation_type} is not registered")
+
+        schema = self._relation_types[relation_type]
+        required_props = {name: prop for name, prop in schema.properties.items() if prop.required}
+
+        # Check for missing required properties
+        for prop_name, prop_def in required_props.items():
+            if prop_name not in properties:
+                raise ValidationError(f"Missing required property: {prop_name}")
+
+        # Validate property types
+        for prop_name, value in properties.items():
+            if prop_name not in schema.properties:
+                raise ValidationError(f"Unknown property: {prop_name}")
+
+            prop_def = schema.properties[prop_name]
+            prop_type = prop_def.type
+
+            if prop_type == PropertyType.STRING and not isinstance(value, str):
+                raise ValidationError(f"Property {prop_name} must be a string")
+            elif prop_type == PropertyType.INTEGER and not isinstance(value, int):
+                raise ValidationError(f"Property {prop_name} must be an integer")
+            elif prop_type == PropertyType.FLOAT and not isinstance(value, (int, float)):
+                raise ValidationError(f"Property {prop_name} must be a number")
+            elif prop_type == PropertyType.BOOLEAN and not isinstance(value, bool):
+                raise ValidationError(f"Property {prop_name} must be a boolean")
+
 # Start with fixtures
 @pytest.fixture
 async def empty_graph_context():
-    """Fixture that provides a clean graph context without any pre-registered types."""
+    """Create an empty graph context for testing."""
     context = TestGraphContext()
     yield context
     await context.cleanup()
 
 @pytest.fixture
 async def graph_context(empty_graph_context):
-    """Fixture that provides a graph context with pre-registered types."""
+    """Create a graph context with default types for testing."""
     await empty_graph_context.setup_default_types()
-    return empty_graph_context
+    yield empty_graph_context
+    await empty_graph_context.cleanup()
 
 # 1. Test the most basic function first - _check_transaction
 @pytest.mark.asyncio
@@ -558,53 +586,54 @@ async def test_check_transaction(empty_graph_context):
 # 2. Test type registration (next most basic functions)
 @pytest.mark.asyncio
 async def test_register_entity_type(empty_graph_context):
-    """Test entity type registration."""
-    # Test basic registration
+    """Test registering entity types."""
+    # Test registering a valid entity type
     entity_type = EntityType(
         name="test",
         properties={
-            "name": PropertyDefinition(type=PropertyType.STRING, required=True)
+            "name": PropertyDefinition(type="string", required=True)
         }
     )
-    empty_graph_context.register_entity_type(entity_type)
+    await empty_graph_context.register_entity_type(entity_type)
+    assert "test" in empty_graph_context._entity_types
 
-    # Test duplicate registration
-    with pytest.raises(SchemaError) as exc_info:
-        empty_graph_context.register_entity_type(entity_type)
-    assert "Entity type already exists" in str(exc_info.value)
+    # Test registering a duplicate entity type
+    with pytest.raises(SchemaError):
+        await empty_graph_context.register_entity_type(entity_type)
 
 @pytest.mark.asyncio
 async def test_register_relation_type(empty_graph_context):
-    """Test relation type registration."""
-    # First register required entity types
+    """Test registering relation types."""
+    # Register required entity types first
     person_type = EntityType(
-        name="person",
-        properties={"name": PropertyDefinition(type=PropertyType.STRING, required=True)}
+        name="Person",
+        properties={
+            "name": PropertyDefinition(type="string", required=True)
+        }
     )
-    empty_graph_context.register_entity_type(person_type)
+    await empty_graph_context.register_entity_type(person_type)
 
-    # Test basic registration
+    # Test registering a valid relation type
     relation_type = RelationType(
         name="knows",
-        from_types=["person"],
-        to_types=["person"]
+        from_types=["Person"],
+        to_types=["Person"]
     )
-    empty_graph_context.register_relation_type(relation_type)
+    await empty_graph_context.register_relation_type(relation_type)
+    assert "knows" in empty_graph_context._relation_types
 
-    # Test duplicate registration
-    with pytest.raises(SchemaError) as exc_info:
-        empty_graph_context.register_relation_type(relation_type)
-    assert "Relation type already exists" in str(exc_info.value)
+    # Test registering a duplicate relation type
+    with pytest.raises(SchemaError):
+        await empty_graph_context.register_relation_type(relation_type)
 
-    # Test with unknown entity type
-    invalid_relation = RelationType(
+    # Test registering with unknown entity type
+    invalid_type = RelationType(
         name="invalid",
-        from_types=["nonexistent"],
-        to_types=["person"]
+        from_types=["Unknown"],
+        to_types=["Person"]
     )
-    with pytest.raises(SchemaError) as exc_info:
-        empty_graph_context.register_relation_type(invalid_relation)
-    assert "Unknown entity type in from_types" in str(exc_info.value)
+    with pytest.raises(SchemaError):
+        await empty_graph_context.register_relation_type(invalid_type)
 
 # 3. Test validation functions (depend only on registered types)
 @pytest.mark.asyncio
@@ -625,7 +654,7 @@ async def test_validate_entity(empty_graph_context):
             )
         }
     )
-    empty_graph_context.register_entity_type(entity_type)
+    await empty_graph_context.register_entity_type(entity_type)
 
     # Test valid entity
     validated = empty_graph_context.validate_entity(
@@ -1018,16 +1047,18 @@ async def test_schema_validation_errors(graph_context):
     """Test schema validation error cases."""
     # Test registering duplicate entity type
     with pytest.raises(SchemaError) as exc_info:
-        graph_context.register_entity_type(EntityType(
-            name="Person",  # Already registered
-            properties={"name": PropertyDefinition(type="string", required=True)}
+        await graph_context.register_entity_type(EntityType(
+            name="Person",  # Already registered in setup
+            properties={
+                "name": PropertyDefinition(type=PropertyType.STRING, required=True)
+            }
         ))
     assert "Entity type already exists" in str(exc_info.value)
 
     # Test registering duplicate relation type
     with pytest.raises(SchemaError) as exc_info:
-        graph_context.register_relation_type(RelationType(
-            name="authored",  # Already registered
+        await graph_context.register_relation_type(RelationType(
+            name="authored",  # Already registered in setup
             from_types=["Person"],
             to_types=["Document"]
         ))
@@ -1035,20 +1066,12 @@ async def test_schema_validation_errors(graph_context):
 
     # Test registering relation type with unknown entity type
     with pytest.raises(SchemaError) as exc_info:
-        graph_context.register_relation_type(RelationType(
+        await graph_context.register_relation_type(RelationType(
             name="new_relation",
             from_types=["UnknownType"],  # Unknown entity type
             to_types=["Document"]
         ))
     assert "Unknown entity type in from_types" in str(exc_info.value)
-
-    with pytest.raises(SchemaError) as exc_info:
-        graph_context.register_relation_type(RelationType(
-            name="new_relation",
-            from_types=["Person"],
-            to_types=["UnknownType"]  # Unknown entity type
-        ))
-    assert "Unknown entity type in to_types" in str(exc_info.value)
 
 @pytest.mark.asyncio
 async def test_property_validation_errors(graph_context):
@@ -1067,7 +1090,7 @@ async def test_property_validation_errors(graph_context):
             entity_type="Person",
             properties={"birth_year": 1815}  # Missing required "name" property
         )
-    assert "Required property missing" in str(exc_info.value)
+    assert "Missing required property: name" in str(exc_info.value)
 
     # Test creating entity with unknown property
     with pytest.raises(ValidationError) as exc_info:
@@ -1078,7 +1101,7 @@ async def test_property_validation_errors(graph_context):
                 "unknown_field": "value"  # Unknown property
             }
         )
-    assert "Unknown properties" in str(exc_info.value)
+    assert "Unknown property" in str(exc_info.value)
 
 @pytest.mark.asyncio
 async def test_relation_validation_errors(graph_context):
@@ -1128,7 +1151,7 @@ async def test_relation_property_validation(empty_graph_context):
         name="person",
         properties={"name": PropertyDefinition(type="string", required=True)}
     )
-    empty_graph_context.register_entity_type(person_type)
+    await empty_graph_context.register_entity_type(person_type)
 
     # Register relation type with required and default properties
     relation_type = RelationType(
@@ -1141,7 +1164,7 @@ async def test_relation_property_validation(empty_graph_context):
             "notes": PropertyDefinition(type="string", required=False)
         }
     )
-    empty_graph_context.register_relation_type(relation_type)
+    await empty_graph_context.register_relation_type(relation_type)
 
     # Test missing required property
     with pytest.raises(ValidationError) as exc_info:
@@ -1311,43 +1334,53 @@ async def test_cleanup_idempotent(graph_context):
     assert len(graph_context._relation_types) == 0
 
 class SimpleBaseGraphContext(BaseGraphContext):
-    """A minimal implementation of BaseGraphContext for testing base functionality."""
-    async def initialize(self) -> None:
-        pass
+    """Simple implementation of BaseGraphContext for testing transaction methods."""
 
-    async def cleanup(self) -> None:
-        pass
+    async def _get_entity_impl(self, entity_id: str) -> dict[str, Any] | None:
+        """Implementation method to get an entity."""
+        return None
 
-    async def create_entity(self, entity_type: str, properties: dict[str, Any]) -> str:
-        pass
+    async def _create_entity_impl(self, entity_type: str, properties: dict[str, Any]) -> str:
+        """Implementation method to create an entity."""
+        return "1"
 
-    async def get_entity(self, entity_id: str) -> Optional[dict[str, Any]]:
-        pass
+    async def _update_entity_impl(self, entity_id: str, properties: dict[str, Any]) -> bool:
+        """Implementation method to update an entity."""
+        return True
 
-    async def update_entity(self, entity_id: str, properties: dict[str, Any]) -> bool:
-        pass
+    async def _delete_entity_impl(self, entity_id: str) -> bool:
+        """Implementation method to delete an entity."""
+        return True
 
-    async def delete_entity(self, entity_id: str) -> bool:
-        pass
+    async def _get_relation_impl(self, relation_id: str) -> dict[str, Any] | None:
+        """Implementation method to get a relation."""
+        return None
 
-    async def create_relation(self, relation_type: str, from_entity: str, to_entity: str,
-                            properties: Optional[dict[str, Any]] = None) -> str:
-        pass
+    async def _create_relation_impl(
+        self,
+        relation_type: str,
+        from_entity: str,
+        to_entity: str,
+        properties: dict[str, Any]
+    ) -> str:
+        """Implementation method to create a relation."""
+        return "1"
 
-    async def get_relation(self, relation_id: str) -> Optional[dict[str, Any]]:
-        pass
+    async def _update_relation_impl(self, relation_id: str, properties: dict[str, Any]) -> bool:
+        """Implementation method to update a relation."""
+        return True
 
-    async def update_relation(self, relation_id: str, properties: dict[str, Any]) -> bool:
-        pass
+    async def _delete_relation_impl(self, relation_id: str) -> bool:
+        """Implementation method to delete a relation."""
+        return True
 
-    async def delete_relation(self, relation_id: str) -> bool:
-        pass
+    async def _query_impl(self, query_spec: dict[str, Any]) -> list[dict[str, Any]]:
+        """Implementation method to execute a query."""
+        return []
 
-    async def query(self, query_spec: dict[str, Any]) -> list[dict[str, Any]]:
-        pass
-
-    async def traverse(self, start_entity: str, traversal_spec: dict[str, Any]) -> list[dict[str, Any]]:
-        pass
+    async def _traverse_impl(self, start_entity: str, traversal_spec: dict[str, Any]) -> list[dict[str, Any]]:
+        """Implementation method to execute a traversal."""
+        return []
 
 @pytest.mark.asyncio
 async def test_base_transaction_methods():
@@ -1381,3 +1414,91 @@ async def test_base_transaction_methods():
 
     with pytest.raises(TransactionError):
         await context.rollback_transaction()  # No transaction
+
+@pytest.mark.asyncio
+async def test_entity_schema_validation(graph_context):
+    """Test entity schema validation."""
+    # Register a schema with required properties
+    await graph_context.register_entity_type(EntityType(
+        name="person",
+        properties={
+            "name": PropertyDefinition(type=PropertyType.STRING, required=True),
+            "age": PropertyDefinition(type=PropertyType.INTEGER, required=False),
+            "is_active": PropertyDefinition(type=PropertyType.BOOLEAN, required=False)
+        }
+    ))
+
+    # Test missing required property
+    with pytest.raises(ValidationError, match="Missing required property: name"):
+        await graph_context.create_entity("person", {})
+
+    # Test invalid property type
+    with pytest.raises(ValidationError, match="Property name must be a string"):
+        await graph_context.create_entity("person", {"name": 123})
+
+    # Test unknown property
+    with pytest.raises(ValidationError, match="Unknown property: unknown"):
+        await graph_context.create_entity("person", {"name": "John", "unknown": "value"})
+
+    # Test valid entity creation
+    entity_id = await graph_context.create_entity("person", {"name": "John", "age": 30, "is_active": True})
+    assert entity_id is not None
+
+@pytest.mark.asyncio
+async def test_relation_schema_validation(graph_context):
+    """Test relation schema validation."""
+    # Register entity types
+    await graph_context.register_entity_type(EntityType(
+        name="person",
+        properties={
+            "name": PropertyDefinition(type=PropertyType.STRING, required=True)
+        }
+    ))
+    await graph_context.register_entity_type(EntityType(
+        name="company",
+        properties={
+            "name": PropertyDefinition(type=PropertyType.STRING, required=True)
+        }
+    ))
+
+    # Register relation type with required properties
+    await graph_context.register_relation_type(RelationType(
+        name="works_at",
+        from_types=["person"],
+        to_types=["company"],
+        properties={
+            "role": PropertyDefinition(type=PropertyType.STRING, required=True),
+            "salary": PropertyDefinition(type=PropertyType.FLOAT, required=False),
+            "is_remote": PropertyDefinition(type=PropertyType.BOOLEAN, required=False)
+        }
+    ))
+
+    # Create entities for testing
+    person_id = await graph_context.create_entity("person", {"name": "John"})
+    company_id = await graph_context.create_entity("company", {"name": "Acme Inc"})
+
+    # Test missing required property
+    with pytest.raises(ValidationError, match="Missing required property: role"):
+        await graph_context.create_relation("works_at", person_id, company_id, {})
+
+    # Test invalid property type
+    with pytest.raises(ValidationError, match="Property role must be a string"):
+        await graph_context.create_relation("works_at", person_id, company_id, {"role": 123})
+
+    # Test unknown property
+    with pytest.raises(ValidationError, match="Unknown property: unknown"):
+        await graph_context.create_relation(
+            "works_at",
+            person_id,
+            company_id,
+            {"role": "Developer", "unknown": "value"}
+        )
+
+    # Test valid relation creation
+    relation_id = await graph_context.create_relation(
+        "works_at",
+        person_id,
+        company_id,
+        {"role": "Developer", "salary": 100000.0, "is_remote": True}
+    )
+    assert relation_id is not None

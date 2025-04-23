@@ -43,6 +43,11 @@ class GraphEvent(str, Enum):
     SCHEMA_MODIFIED = "schema:modified"
     TYPE_MODIFIED = "type:modified"
 
+    # Transaction operations
+    TRANSACTION_BEGIN = "transaction:begin"
+    TRANSACTION_COMMIT = "transaction:commit"
+    TRANSACTION_ROLLBACK = "transaction:rollback"
+
 class EventMetadata(BaseModel):
     """Metadata for graph events.
 
