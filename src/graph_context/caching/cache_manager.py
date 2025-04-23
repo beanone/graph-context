@@ -6,7 +6,9 @@ and event handling for the graph context.
 
 import time
 import logging
-from typing import Any, Dict, Optional, Set
+import hashlib
+import json
+from typing import Any, Dict, Optional
 from datetime import datetime, UTC
 
 from graph_context.event_system import (
@@ -15,7 +17,8 @@ from graph_context.event_system import (
     EventContext,
     EventMetadata
 )
-from .cache_store import CacheStore, CacheEntry
+from .cache_store import CacheEntry
+from .cache_store_manager import CacheStoreManager
 from .config import CacheConfig, CacheMetrics
 
 
@@ -37,22 +40,23 @@ class CacheManager:
             event_system: Optional event system to subscribe to
         """
         self.config = config or CacheConfig()
-        self.store = CacheStore(maxsize=self.config.max_size, ttl=self.config.default_ttl)
+        self.store_manager = CacheStoreManager(self.config)
         self.metrics = CacheMetrics() if self.config.enable_metrics else None
         self._enabled = True
         self._in_transaction = False
-        self._transaction_cache: Dict[str, CacheEntry] = {}
+        self._transaction_cache: Dict[str, Dict[str, CacheEntry]] = {
+            'entity': {},
+            'relation': {},
+            'query': {},
+            'traversal': {}
+        }
 
         # Subscribe to events if event system is provided
         if event_system:
             self._subscribe_to_events(event_system)
 
     def _subscribe_to_events(self, event_system: EventSystem) -> None:
-        """Subscribe to relevant graph events.
-
-        Args:
-            event_system: The event system to subscribe to
-        """
+        """Subscribe to relevant graph events."""
         events = [
             GraphEvent.ENTITY_READ,
             GraphEvent.ENTITY_WRITE,
@@ -76,12 +80,7 @@ class CacheManager:
             event_system.subscribe(event, self.handle_event)
 
     def _track_cache_access(self, hit: bool, duration: float) -> None:
-        """Track a cache access in metrics.
-
-        Args:
-            hit: Whether the access was a cache hit
-            duration: Time taken for the operation in seconds
-        """
+        """Track a cache access in metrics."""
         if not self.metrics:
             return
 
@@ -94,19 +93,11 @@ class CacheManager:
         self.metrics.total_time += duration
 
     def get_metrics(self) -> Optional[Dict[str, Any]]:
-        """Get current cache metrics.
-
-        Returns:
-            Dictionary of metrics if enabled, None otherwise
-        """
+        """Get current cache metrics."""
         return self.metrics.to_dict() if self.metrics else None
 
     async def handle_event(self, context: EventContext) -> None:
-        """Handle a graph event.
-
-        Args:
-            context: Event context containing event type and data
-        """
+        """Handle a graph event."""
         start_time = time.time()
         try:
             if not self._enabled:
@@ -122,13 +113,13 @@ class CacheManager:
                 case GraphEvent.ENTITY_WRITE | GraphEvent.ENTITY_BULK_WRITE:
                     await self._handle_entity_write(context)
                 case GraphEvent.ENTITY_DELETE | GraphEvent.ENTITY_BULK_DELETE:
-                    await self._handle_entity_delete(context)
+                    await self._handle_entity_write(context)  # Same handling as write
                 case GraphEvent.RELATION_READ:
                     await self._handle_relation_read(context)
                 case GraphEvent.RELATION_WRITE | GraphEvent.RELATION_BULK_WRITE:
                     await self._handle_relation_write(context)
                 case GraphEvent.RELATION_DELETE | GraphEvent.RELATION_BULK_DELETE:
-                    await self._handle_relation_delete(context)
+                    await self._handle_relation_write(context)  # Same handling as write
                 case GraphEvent.QUERY_EXECUTED:
                     await self._handle_query_executed(context)
                 case GraphEvent.TRAVERSAL_EXECUTED:
@@ -147,321 +138,240 @@ class CacheManager:
                 self.metrics.total_time += duration
 
     async def _handle_entity_read(self, context: EventContext) -> None:
-        """Handle an entity read event.
-
-        Args:
-            context: Event context containing entity information
-        """
+        """Handle an entity read event."""
         entity_id = context.data["entity_id"]
-        entity_type = context.metadata.entity_type
         result = context.data.get("result")
 
-        key = f"entity:{entity_type}:{entity_id}"
         start_time = time.time()
-
-        logger.debug("Handling entity read: %s (type: %s)", entity_id, entity_type)
+        logger.debug("Handling entity read: %s", entity_id)
 
         # Check transaction cache first if in transaction
         if self._in_transaction:
-            if key in self._transaction_cache:
-                logger.debug("Found in transaction cache: %s", key)
+            if entity_id in self._transaction_cache['entity']:
+                logger.debug("Found in transaction cache: %s", entity_id)
                 self._track_cache_access(True, time.time() - start_time)
-                return self._transaction_cache[key].value
+                return self._transaction_cache['entity'][entity_id].value
+
+            # If we have a result and we're in a transaction, store it in transaction cache
+            if result:
+                logger.debug("Storing in transaction cache: %s", entity_id)
+                entry = CacheEntry(
+                    value=result,
+                    created_at=datetime.now(UTC),
+                    entity_type=context.metadata.entity_type
+                )
+                self._transaction_cache['entity'][entity_id] = entry
+                return result
 
         # Then check main cache
-        cached = await self.store.get(key)
-        if cached:
-            logger.debug("Found in main cache: %s", key)
+        store = self.store_manager.get_entity_store()
+        cached_entry = await store.get(entity_id)
+        if cached_entry:
+            logger.debug("Found in main cache: %s", entity_id)
             self._track_cache_access(True, time.time() - start_time)
-            return cached.value
+            return cached_entry.value
 
-        logger.debug("Not found in cache: %s", key)
+        logger.debug("Not found in cache: %s", entity_id)
         self._track_cache_access(False, time.time() - start_time)
 
-        if result:
-            logger.debug("Storing in cache: %s", key)
+        if result and not self._in_transaction:
+            logger.debug("Storing in main cache: %s", entity_id)
             entry = CacheEntry(
                 value=result,
-                entity_type=entity_type,
-                operation_id=context.metadata.operation_id,
-                created_at=datetime.now(UTC)
+                created_at=datetime.now(UTC),
+                entity_type=context.metadata.entity_type
             )
-            if self._in_transaction:
-                self._transaction_cache[key] = entry
-            else:
-                await self.store.set(key, entry)
+            await store.set(entity_id, entry)
 
         return result
 
     async def _handle_entity_write(self, context: EventContext) -> None:
-        """Handle an entity write event.
-
-        Args:
-            context: Event context containing entity information
-        """
+        """Handle an entity write/delete event."""
         entity_id = context.data["entity_id"]
-        entity_type = context.metadata.entity_type
-
-        key = f"entity:{entity_type}:{entity_id}"
-        logger.debug("Handling entity write: %s (type: %s)", entity_id, entity_type)
+        logger.debug("Handling entity write/delete: %s", entity_id)
 
         if self._in_transaction:
-            # In transaction, just update transaction cache
-            logger.debug("Removing from transaction cache: %s", key)
-            self._transaction_cache.pop(key, None)
+            self._transaction_cache['entity'].pop(entity_id, None)
         else:
-            # Outside transaction, invalidate main cache
-            logger.debug("Invalidating cache for entity: %s", key)
-            await self.store.delete(key)
-            await self.store.invalidate_type(entity_type)
-            # Also invalidate dependent queries and traversals
-            await self.store.invalidate_dependencies(key)
-
-    async def _handle_entity_delete(self, context: EventContext) -> None:
-        """Handle an entity delete event.
-
-        Args:
-            context: Event context containing entity information
-        """
-        await self._handle_entity_write(context)
+            store = self.store_manager.get_entity_store()
+            await store.delete(entity_id)
 
     async def _handle_relation_read(self, context: EventContext) -> None:
-        """Handle a relation read event.
-
-        Args:
-            context: Event context containing relation information
-        """
+        """Handle a relation read event."""
         relation_id = context.data["relation_id"]
-        relation_type = context.metadata.relation_type
         result = context.data.get("result")
 
-        key = f"relation:{relation_type}:{relation_id}"
         start_time = time.time()
-
-        logger.debug("Handling relation read: %s (type: %s)", relation_id, relation_type)
+        logger.debug("Handling relation read: %s", relation_id)
 
         # Check transaction cache first if in transaction
         if self._in_transaction:
-            if key in self._transaction_cache:
-                logger.debug("Found in transaction cache: %s", key)
+            if relation_id in self._transaction_cache['relation']:
+                logger.debug("Found in transaction cache: %s", relation_id)
                 self._track_cache_access(True, time.time() - start_time)
-                return self._transaction_cache[key].value
+                return self._transaction_cache['relation'][relation_id].value
 
         # Then check main cache
-        cached = await self.store.get(key)
-        if cached:
-            logger.debug("Found in main cache: %s", key)
+        store = self.store_manager.get_relation_store()
+        cached_entry = await store.get(relation_id)
+        if cached_entry:
+            logger.debug("Found in main cache: %s", relation_id)
             self._track_cache_access(True, time.time() - start_time)
-            return cached.value
+            return cached_entry.value
 
-        logger.debug("Not found in cache: %s", key)
+        logger.debug("Not found in cache: %s", relation_id)
         self._track_cache_access(False, time.time() - start_time)
 
         if result:
-            logger.debug("Storing in cache: %s", key)
+            logger.debug("Storing in cache: %s", relation_id)
             entry = CacheEntry(
                 value=result,
-                relation_type=relation_type,
-                operation_id=context.metadata.operation_id,
-                created_at=datetime.now(UTC)
+                created_at=datetime.now(UTC),
+                relation_type=context.metadata.relation_type
             )
             if self._in_transaction:
-                self._transaction_cache[key] = entry
+                self._transaction_cache['relation'][relation_id] = entry
             else:
-                await self.store.set(key, entry)
+                await store.set(relation_id, entry)
 
         return result
 
     async def _handle_relation_write(self, context: EventContext) -> None:
-        """Handle a relation write event.
-
-        Args:
-            context: Event context containing relation information
-        """
+        """Handle a relation write/delete event."""
         relation_id = context.data["relation_id"]
-        relation_type = context.metadata.relation_type
-
-        key = f"relation:{relation_type}:{relation_id}"
-        logger.debug("Handling relation write: %s (type: %s)", relation_id, relation_type)
+        logger.debug("Handling relation write/delete: %s", relation_id)
 
         if self._in_transaction:
-            # In transaction, just update transaction cache
-            logger.debug("Removing from transaction cache: %s", key)
-            self._transaction_cache.pop(key, None)
+            self._transaction_cache['relation'].pop(relation_id, None)
         else:
-            # Outside transaction, invalidate main cache
-            logger.debug("Invalidating cache for relation: %s", key)
-            await self.store.delete(key)
-            await self.store.invalidate_type(relation_type)
-            # Also invalidate dependent queries and traversals
-            await self.store.invalidate_dependencies(key)
-
-    async def _handle_relation_delete(self, context: EventContext) -> None:
-        """Handle a relation delete event.
-
-        Args:
-            context: Event context containing relation information
-        """
-        await self._handle_relation_write(context)
+            store = self.store_manager.get_relation_store()
+            await store.delete(relation_id)
 
     async def _handle_query_executed(self, context: EventContext) -> None:
-        """Handle a query execution event.
-
-        Args:
-            context: Event context containing query information
-        """
+        """Handle a query execution event."""
         query_hash = context.data["query_hash"]
-        key = f"query:{query_hash}"
-        start_time = time.time()
+        result = context.data.get("result")
 
+        start_time = time.time()
         logger.debug("Handling query execution: %s", query_hash)
 
-        # Check if this is a cache read attempt
-        if "result" not in context.data:
-            # Try to get from cache
-            cached = await self.store.get(key)
-            if cached:
-                logger.debug("Found query in cache: %s", key)
+        # Check transaction cache first if in transaction
+        if self._in_transaction:
+            if query_hash in self._transaction_cache['query']:
+                logger.debug("Found in transaction cache: %s", query_hash)
                 self._track_cache_access(True, time.time() - start_time)
-                return cached.value
-            logger.debug("Query not found in cache: %s", key)
-            self._track_cache_access(False, time.time() - start_time)
-            return None
+                return self._transaction_cache['query'][query_hash].value
 
-        # This is a write operation - track as cache miss
-        logger.debug("Storing query result in cache: %s", key)
+        # Then check main cache
+        store = self.store_manager.get_query_store()
+        cached_entry = await store.get(query_hash)
+        if cached_entry:
+            logger.debug("Found in query cache: %s", query_hash)
+            self._track_cache_access(True, time.time() - start_time)
+            return cached_entry.value
+
+        logger.debug("Not found in cache: %s", query_hash)
         self._track_cache_access(False, time.time() - start_time)
 
-        # Store the result
-        result = context.data["result"]
-        entry = CacheEntry(
-            value=result,
-            query_hash=query_hash,
-            operation_id=context.metadata.operation_id,
-            created_at=datetime.now(UTC)
-        )
-
-        if self._in_transaction:
-            self._transaction_cache[key] = entry
-        else:
-            # Store with type dependencies
-            await self.store.set(
-                key,
-                entry,
-                dependencies=context.metadata.affected_types
+        if result:
+            logger.debug("Storing in cache: %s", query_hash)
+            entry = CacheEntry(
+                value=result,
+                created_at=datetime.now(UTC),
+                query_hash=query_hash
             )
-            if context.metadata.affected_types:
-                logger.debug("Query dependencies: %s", context.metadata.affected_types)
+            if self._in_transaction:
+                self._transaction_cache['query'][query_hash] = entry
+            else:
+                await store.set(query_hash, entry)
 
         return result
 
     async def _handle_traversal_executed(self, context: EventContext) -> None:
-        """Handle a traversal execution event.
-
-        Args:
-            context: Event context containing traversal information
-        """
+        """Handle a traversal execution event."""
         traversal_hash = context.data["traversal_hash"]
-        key = f"traversal:{traversal_hash}"
-        start_time = time.time()
+        result = context.data.get("result")
 
+        start_time = time.time()
         logger.debug("Handling traversal execution: %s", traversal_hash)
 
-        # Check if this is a cache read attempt
-        if "result" not in context.data:
-            # Try to get from cache
-            cached = await self.store.get(key)
-            if cached:
-                logger.debug("Found traversal in cache: %s", key)
+        # Check transaction cache first if in transaction
+        if self._in_transaction:
+            if traversal_hash in self._transaction_cache['traversal']:
+                logger.debug("Found in transaction cache: %s", traversal_hash)
                 self._track_cache_access(True, time.time() - start_time)
-                return cached.value
-            logger.debug("Traversal not found in cache: %s", key)
-            self._track_cache_access(False, time.time() - start_time)
-            return None
+                return self._transaction_cache['traversal'][traversal_hash].value
 
-        # This is a write operation - track as cache miss
-        logger.debug("Storing traversal result in cache: %s", key)
+        # Then check main cache
+        store = self.store_manager.get_traversal_store()
+        cached_entry = await store.get(traversal_hash)
+        if cached_entry:
+            logger.debug("Found in traversal cache: %s", traversal_hash)
+            self._track_cache_access(True, time.time() - start_time)
+            return cached_entry.value
+
+        logger.debug("Not found in cache: %s", traversal_hash)
         self._track_cache_access(False, time.time() - start_time)
 
-        # Store the result
-        result = context.data["result"]
-        entry = CacheEntry(
-            value=result,
-            query_hash=traversal_hash,  # Reuse query_hash field for traversal hash
-            operation_id=context.metadata.operation_id,
-            created_at=datetime.now(UTC)
-        )
-
-        if self._in_transaction:
-            self._transaction_cache[key] = entry
-        else:
-            # Store with type dependencies
-            await self.store.set(
-                key,
-                entry,
-                dependencies=context.metadata.affected_types
+        if result:
+            logger.debug("Storing in cache: %s", traversal_hash)
+            entry = CacheEntry(
+                value=result,
+                created_at=datetime.now(UTC),
+                query_hash=traversal_hash  # Reuse query_hash field for traversal hash
             )
-            if context.metadata.affected_types:
-                logger.debug("Traversal dependencies: %s", context.metadata.affected_types)
+            if self._in_transaction:
+                self._transaction_cache['traversal'][traversal_hash] = entry
+            else:
+                await store.set(traversal_hash, entry)
 
         return result
 
     async def _handle_schema_modified(self, context: EventContext) -> None:
-        """Handle a schema modification event.
-
-        Args:
-            context: Event context containing schema information
-        """
-        affected_types = context.metadata.affected_types
-        if not affected_types:
-            return
-
-        logger.info("Schema modification affecting types: %s", affected_types)
-
-        # Track cache miss for schema modification
-        self._track_cache_access(False, 0)
-        logger.debug("Tracking cache miss for schema modification")
-
-        # Invalidate all affected types
-        for type_name in affected_types:
-            logger.debug("Invalidating cache for type: %s", type_name)
-            await self.store.invalidate_type(type_name)
+        """Handle a schema modification event."""
+        logger.info("Schema modification - clearing all caches")
+        await self.clear()
 
     async def _handle_transaction_begin(self, context: EventContext) -> None:
-        """Handle a transaction begin event.
-
-        Args:
-            context: Event context for transaction begin
-        """
+        """Handle a transaction begin event."""
         logger.info("Beginning new transaction")
         self._in_transaction = True
-        self._transaction_cache.clear()
+        for cache in self._transaction_cache.values():
+            cache.clear()
 
     async def _handle_transaction_commit(self, context: EventContext) -> None:
-        """Handle a transaction commit event.
+        """Handle a transaction commit event."""
+        logger.info("Committing transaction")
 
-        Args:
-            context: Event context for transaction commit
-        """
-        logger.info("Committing transaction with %d cached entries", len(self._transaction_cache))
+        # Get all stores
+        entity_store = self.store_manager.get_entity_store()
+        relation_store = self.store_manager.get_relation_store()
+        query_store = self.store_manager.get_query_store()
+        traversal_store = self.store_manager.get_traversal_store()
 
-        # Apply transaction cache to main cache
-        for key, entry in self._transaction_cache.items():
-            logger.debug("Committing cache entry: %s", key)
-            await self.store.set(key, entry)
+        # Commit all cached entries to their respective stores
+        for entity_id, entry in self._transaction_cache['entity'].items():
+            await entity_store.set(entity_id, entry)
+
+        for relation_id, entry in self._transaction_cache['relation'].items():
+            await relation_store.set(relation_id, entry)
+
+        for query_hash, entry in self._transaction_cache['query'].items():
+            await query_store.set(query_hash, entry)
+
+        for traversal_hash, entry in self._transaction_cache['traversal'].items():
+            await traversal_store.set(traversal_hash, entry)
 
         self._in_transaction = False
-        self._transaction_cache.clear()
+        for cache in self._transaction_cache.values():
+            cache.clear()
 
     async def _handle_transaction_rollback(self, context: EventContext) -> None:
-        """Handle a transaction rollback event.
-
-        Args:
-            context: Event context for transaction rollback
-        """
-        logger.info("Rolling back transaction, discarding %d cached entries", len(self._transaction_cache))
+        """Handle a transaction rollback event."""
+        logger.info("Rolling back transaction")
         self._in_transaction = False
-        self._transaction_cache.clear()
+        for cache in self._transaction_cache.values():
+            cache.clear()
 
     def enable(self) -> None:
         """Enable the cache manager."""
@@ -476,5 +386,11 @@ class CacheManager:
     async def clear(self) -> None:
         """Clear all caches."""
         logger.info("Clearing all caches")
-        await self.store.clear()
-        self._transaction_cache.clear()
+        await self.store_manager.clear_all()
+        for cache in self._transaction_cache.values():
+            cache.clear()
+
+    def _hash_query(self, query_spec: Any) -> str:
+        """Generate a hash for a query specification."""
+        query_str = json.dumps(query_spec, sort_keys=True)
+        return hashlib.sha256(query_str.encode()).hexdigest()

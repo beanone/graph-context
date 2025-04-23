@@ -1,339 +1,395 @@
-"""Unit tests for the cache manager implementation."""
+"""Tests for the CacheManager class."""
 
 import pytest
-from typing import Dict, Any
+from unittest.mock import AsyncMock, Mock, patch
 from datetime import datetime, UTC
 
-from graph_context.caching.cache_manager import CacheManager
-from graph_context.caching.config import CacheConfig
 from graph_context.event_system import (
+    EventSystem,
     GraphEvent,
     EventContext,
     EventMetadata
 )
+from graph_context.caching.cache_manager import CacheManager
+from graph_context.caching.cache_store import CacheEntry
+from graph_context.caching.config import CacheConfig
+
+
+@pytest.fixture
+def event_system():
+    """Create a mock event system."""
+    system = Mock(spec=EventSystem)
+    system.subscribe = Mock()  # Not async since it's called in __init__
+    return system
 
 
 @pytest.fixture
 def cache_config():
-    """Create a cache configuration for testing."""
+    """Create a cache configuration."""
     return CacheConfig(
-        max_size=100,
-        default_ttl=300,
         enable_metrics=True,
-        type_ttls={
-            "test_type": 600,
-            "query": 300,
-            "traversal": 300,
-        }
+        entity_cache_size=100,
+        entity_cache_ttl=3600,
+        relation_cache_size=100,
+        relation_cache_ttl=3600,
+        query_cache_size=100,
+        query_cache_ttl=3600,
+        traversal_cache_size=100,
+        traversal_cache_ttl=3600
     )
 
 
 @pytest.fixture
-def cache_manager(cache_config):
-    """Create a cache manager instance for testing."""
-    return CacheManager(config=cache_config)
+def mock_store():
+    """Create a mock cache store."""
+    store = AsyncMock()
+    store.get = AsyncMock()
+    store.set = AsyncMock()
+    store.delete = AsyncMock()
+    store.clear = AsyncMock()
+    return store
 
 
 @pytest.fixture
-def sample_entity() -> Dict[str, Any]:
-    """Create a sample entity for testing."""
-    return {
-        "id": "test123",
-        "type": "test_type",
-        "properties": {"name": "Test Entity"}
-    }
+def mock_store_manager():
+    """Create a mock store manager with all stores."""
+    manager = Mock()
+
+    # Create individual store mocks
+    entity_store = AsyncMock()
+    entity_store.get = AsyncMock()
+    entity_store.set = AsyncMock()
+    entity_store.delete = AsyncMock()
+    entity_store.clear = AsyncMock()
+
+    relation_store = AsyncMock()
+    relation_store.get = AsyncMock()
+    relation_store.set = AsyncMock()
+    relation_store.delete = AsyncMock()
+    relation_store.clear = AsyncMock()
+
+    query_store = AsyncMock()
+    query_store.get = AsyncMock()
+    query_store.set = AsyncMock()
+    query_store.delete = AsyncMock()
+    query_store.clear = AsyncMock()
+
+    traversal_store = AsyncMock()
+    traversal_store.get = AsyncMock()
+    traversal_store.set = AsyncMock()
+    traversal_store.delete = AsyncMock()
+    traversal_store.clear = AsyncMock()
+
+    # Set up store getters
+    manager.get_entity_store = Mock(return_value=entity_store)
+    manager.get_relation_store = Mock(return_value=relation_store)
+    manager.get_query_store = Mock(return_value=query_store)
+    manager.get_traversal_store = Mock(return_value=traversal_store)
+
+    # Set up clear_all as async
+    manager.clear_all = AsyncMock()
+
+    return manager
 
 
 @pytest.fixture
-def sample_relation() -> Dict[str, Any]:
-    """Create a sample relation for testing."""
-    return {
-        "id": "rel123",
-        "type": "test_relation",
-        "from_entity": "entity1",
-        "to_entity": "entity2",
-        "properties": {"weight": 1.0}
-    }
+def cache_manager(event_system, cache_config, mock_store_manager):
+    """Create a cache manager instance."""
+    with patch('graph_context.caching.cache_manager.CacheStoreManager', return_value=mock_store_manager):
+        manager = CacheManager(config=cache_config, event_system=event_system)
+        return manager
 
 
 @pytest.mark.asyncio
-async def test_entity_read_event(cache_manager, sample_entity):
-    """Test handling of entity read events."""
-    # Handle read event without cache hit
-    await cache_manager.handle_event(EventContext(
+async def test_entity_caching(cache_manager, mock_store_manager):
+    """Test entity caching behavior."""
+    # Setup
+    entity_id = "test_entity"
+    entity_data = {"id": entity_id, "type": "person", "properties": {"name": "Test"}}
+    store = mock_store_manager.get_entity_store()
+    store.get.return_value = None  # First call returns cache miss
+
+    # Test cache miss
+    context = EventContext(
         event=GraphEvent.ENTITY_READ,
-        metadata=EventMetadata(entity_type=sample_entity["type"]),
-        data={
-            "entity_id": sample_entity["id"],
-            "result": sample_entity
-        }
+        data={"entity_id": entity_id, "result": entity_data},
+        metadata=EventMetadata(entity_type="person")
+    )
+    await cache_manager.handle_event(context)
+
+    # Verify cache set
+    store.set.assert_awaited_once()
+    call_args = store.set.await_args[0]
+    assert call_args[0] == entity_id
+    assert isinstance(call_args[1], CacheEntry)
+    assert call_args[1].value == entity_data
+
+    # Setup cache hit
+    store.get.return_value = CacheEntry(
+        value=entity_data,
+        created_at=datetime.now(UTC),
+        entity_type="person"
+    )
+
+    # Test cache hit
+    await cache_manager.handle_event(context)
+    assert store.get.await_count == 2  # Called twice now
+
+    # Test cache invalidation
+    context = EventContext(
+        event=GraphEvent.ENTITY_WRITE,
+        data={"entity_id": entity_id},
+        metadata=EventMetadata(entity_type="person")
+    )
+    await cache_manager.handle_event(context)
+    store.delete.assert_awaited_once_with(entity_id)
+
+
+@pytest.mark.asyncio
+async def test_relation_caching(cache_manager, mock_store_manager):
+    """Test relation caching behavior."""
+    # Setup
+    relation_id = "test_relation"
+    relation_data = {
+        "id": relation_id,
+        "type": "knows",
+        "start_id": "entity1",
+        "end_id": "entity2"
+    }
+    store = mock_store_manager.get_relation_store()
+    store.get.return_value = None  # First call returns cache miss
+
+    # Test cache miss
+    context = EventContext(
+        event=GraphEvent.RELATION_READ,
+        data={"relation_id": relation_id, "result": relation_data},
+        metadata=EventMetadata(relation_type="knows")
+    )
+    await cache_manager.handle_event(context)
+
+    # Verify cache set
+    store.set.assert_awaited_once()
+    call_args = store.set.await_args[0]
+    assert call_args[0] == relation_id
+    assert isinstance(call_args[1], CacheEntry)
+    assert call_args[1].value == relation_data
+
+    # Setup cache hit
+    store.get.return_value = CacheEntry(
+        value=relation_data,
+        created_at=datetime.now(UTC),
+        relation_type="knows"
+    )
+
+    # Test cache hit
+    await cache_manager.handle_event(context)
+    assert store.get.await_count == 2  # Called twice now
+
+    # Test cache invalidation
+    context = EventContext(
+        event=GraphEvent.RELATION_WRITE,
+        data={"relation_id": relation_id},
+        metadata=EventMetadata(relation_type="knows")
+    )
+    await cache_manager.handle_event(context)
+    store.delete.assert_awaited_once_with(relation_id)
+
+
+@pytest.mark.asyncio
+async def test_query_caching(cache_manager, mock_store_manager):
+    """Test query caching behavior."""
+    # Setup
+    query_hash = "test_query_hash"
+    query_result = [{"id": "entity1"}, {"id": "entity2"}]
+    store = mock_store_manager.get_query_store()
+    store.get.return_value = None  # First call returns cache miss
+
+    # Test cache miss
+    context = EventContext(
+        event=GraphEvent.QUERY_EXECUTED,
+        data={"query_hash": query_hash, "result": query_result},
+        metadata=EventMetadata()
+    )
+    await cache_manager.handle_event(context)
+
+    # Verify cache set
+    store.set.assert_awaited_once()
+    call_args = store.set.await_args[0]
+    assert call_args[0] == query_hash
+    assert isinstance(call_args[1], CacheEntry)
+    assert call_args[1].value == query_result
+
+    # Setup cache hit
+    store.get.return_value = CacheEntry(
+        value=query_result,
+        created_at=datetime.now(UTC),
+        query_hash=query_hash
+    )
+
+    # Test cache hit
+    await cache_manager.handle_event(context)
+    assert store.get.await_count == 2  # Called twice now
+
+
+@pytest.mark.asyncio
+async def test_traversal_caching(cache_manager, mock_store_manager):
+    """Test traversal caching behavior."""
+    # Setup
+    traversal_hash = "test_traversal_hash"
+    traversal_result = [{"id": "entity1"}, {"id": "entity2"}]
+    store = mock_store_manager.get_traversal_store()
+    store.get.return_value = None  # First call returns cache miss
+
+    # Test cache miss
+    context = EventContext(
+        event=GraphEvent.TRAVERSAL_EXECUTED,
+        data={"traversal_hash": traversal_hash, "result": traversal_result},
+        metadata=EventMetadata()
+    )
+    await cache_manager.handle_event(context)
+
+    # Verify cache set
+    store.set.assert_awaited_once()
+    call_args = store.set.await_args[0]
+    assert call_args[0] == traversal_hash
+    assert isinstance(call_args[1], CacheEntry)
+    assert call_args[1].value == traversal_result
+
+    # Setup cache hit
+    store.get.return_value = CacheEntry(
+        value=traversal_result,
+        created_at=datetime.now(UTC),
+        query_hash=traversal_hash
+    )
+
+    # Test cache hit
+    await cache_manager.handle_event(context)
+    assert store.get.await_count == 2  # Called twice now
+
+
+@pytest.mark.asyncio
+async def test_transaction_handling(cache_manager, mock_store_manager):
+    """Test transaction handling behavior."""
+    # Setup
+    entity_id = "test_entity"
+    entity_data = {"id": entity_id, "type": "person", "properties": {"name": "Test"}}
+    entity_store = mock_store_manager.get_entity_store()
+
+    # Begin transaction
+    await cache_manager.handle_event(EventContext(
+        event=GraphEvent.TRANSACTION_BEGIN,
+        data={},
+        metadata=EventMetadata()
     ))
+
+    # Read entity in transaction
+    context = EventContext(
+        event=GraphEvent.ENTITY_READ,
+        data={"entity_id": entity_id, "result": entity_data},
+        metadata=EventMetadata(entity_type="person")
+    )
+    await cache_manager.handle_event(context)
+
+    # Verify entity is in transaction cache but not main cache
+    entity_store.set.assert_not_awaited()
+    assert entity_id in cache_manager._transaction_cache['entity']
+
+    # Commit transaction
+    await cache_manager.handle_event(EventContext(
+        event=GraphEvent.TRANSACTION_COMMIT,
+        data={},
+        metadata=EventMetadata()
+    ))
+
+    # Verify entity was moved to main cache
+    entity_store.set.assert_awaited_once()
+    call_args = entity_store.set.await_args[0]
+    assert call_args[0] == entity_id
+    assert isinstance(call_args[1], CacheEntry)
+    assert call_args[1].value == entity_data
+
+    # Verify transaction cache was cleared
+    assert not cache_manager._transaction_cache['entity']
+
+
+@pytest.mark.asyncio
+async def test_schema_modification(cache_manager, mock_store_manager):
+    """Test schema modification handling."""
+    # Trigger schema modification
+    context = EventContext(
+        event=GraphEvent.SCHEMA_MODIFIED,
+        data={},
+        metadata=EventMetadata(affected_types={"person"})
+    )
+    await cache_manager.handle_event(context)
+
+    # Verify all caches were cleared
+    mock_store_manager.clear_all.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_cache_metrics(cache_manager, mock_store_manager):
+    """Test cache metrics tracking."""
+    # Setup
+    entity_id = "test_entity"
+    entity_data = {"id": entity_id, "type": "person", "properties": {"name": "Test"}}
+    store = mock_store_manager.get_entity_store()
+
+    # Test cache miss
+    store.get.return_value = None
+    context = EventContext(
+        event=GraphEvent.ENTITY_READ,
+        data={"entity_id": entity_id, "result": entity_data},
+        metadata=EventMetadata(entity_type="person")
+    )
+    await cache_manager.handle_event(context)
+
+    # Test cache hit
+    store.get.return_value = CacheEntry(
+        value=entity_data,
+        created_at=datetime.now(UTC),
+        entity_type="person"
+    )
+    await cache_manager.handle_event(context)
 
     # Verify metrics
     metrics = cache_manager.get_metrics()
     assert metrics is not None
-    assert metrics["hits"] == 0
+    assert metrics["hits"] == 1
     assert metrics["misses"] == 1
+    assert metrics["total_time"] > 0
 
-    # Handle read event with cache hit
-    await cache_manager.handle_event(EventContext(
+
+@pytest.mark.asyncio
+async def test_cache_enable_disable(cache_manager, mock_store_manager):
+    """Test cache enable/disable functionality."""
+    # Setup
+    entity_id = "test_entity"
+    entity_data = {"id": entity_id, "type": "person", "properties": {"name": "Test"}}
+    store = mock_store_manager.get_entity_store()
+    store.get.return_value = CacheEntry(
+        value=entity_data,
+        created_at=datetime.now(UTC),
+        entity_type="person"
+    )
+
+    # Test with cache enabled (default)
+    context = EventContext(
         event=GraphEvent.ENTITY_READ,
-        metadata=EventMetadata(entity_type=sample_entity["type"]),
-        data={"entity_id": sample_entity["id"]}
-    ))
-
-    # Verify metrics updated
-    metrics = cache_manager.get_metrics()
-    assert metrics["hits"] == 1
-    assert metrics["misses"] == 1
-
-
-@pytest.mark.asyncio
-async def test_entity_write_event(cache_manager, sample_entity):
-    """Test handling of entity write events."""
-    # First cache an entity
-    await cache_manager.handle_event(EventContext(
-        event=GraphEvent.ENTITY_READ,
-        metadata=EventMetadata(entity_type=sample_entity["type"]),
-        data={
-            "entity_id": sample_entity["id"],
-            "result": sample_entity
-        }
-    ))
-
-    # Now write the same entity
-    await cache_manager.handle_event(EventContext(
-        event=GraphEvent.ENTITY_WRITE,
-        metadata=EventMetadata(entity_type=sample_entity["type"]),
-        data={"entity_id": sample_entity["id"]}
-    ))
-
-    # Verify cache was invalidated
-    await cache_manager.handle_event(EventContext(
-        event=GraphEvent.ENTITY_READ,
-        metadata=EventMetadata(entity_type=sample_entity["type"]),
-        data={"entity_id": sample_entity["id"]}
-    ))
-
-    # Should be a cache miss
-    metrics = cache_manager.get_metrics()
-    assert metrics["misses"] == 2
-    assert metrics["hits"] == 0
-
-
-@pytest.mark.asyncio
-async def test_relation_operations(cache_manager, sample_relation):
-    """Test handling of relation operations."""
-    # Cache a relation
-    await cache_manager.handle_event(EventContext(
-        event=GraphEvent.RELATION_READ,
-        metadata=EventMetadata(relation_type=sample_relation["type"]),
-        data={
-            "relation_id": sample_relation["id"],
-            "result": sample_relation
-        }
-    ))
-
-    # Verify metrics
-    metrics = cache_manager.get_metrics()
-    assert metrics["misses"] == 1
-    assert metrics["hits"] == 0
-
-    # Read cached relation
-    await cache_manager.handle_event(EventContext(
-        event=GraphEvent.RELATION_READ,
-        metadata=EventMetadata(relation_type=sample_relation["type"]),
-        data={"relation_id": sample_relation["id"]}
-    ))
-
-    # Verify cache hit
-    metrics = cache_manager.get_metrics()
-    assert metrics["hits"] == 1
-    assert metrics["misses"] == 1
-
-    # Delete relation
-    await cache_manager.handle_event(EventContext(
-        event=GraphEvent.RELATION_DELETE,
-        metadata=EventMetadata(relation_type=sample_relation["type"]),
-        data={"relation_id": sample_relation["id"]}
-    ))
-
-    # Verify cache miss after deletion
-    await cache_manager.handle_event(EventContext(
-        event=GraphEvent.RELATION_READ,
-        metadata=EventMetadata(relation_type=sample_relation["type"]),
-        data={"relation_id": sample_relation["id"]}
-    ))
-
-    metrics = cache_manager.get_metrics()
-    assert metrics["misses"] == 2
-    assert metrics["hits"] == 1
-
-
-@pytest.mark.asyncio
-async def test_query_caching(cache_manager):
-    """Test handling of query execution events."""
-    query_hash = "test_query_hash"
-    query_result = [{"id": "1", "type": "test_type"}]
-    dependencies = {"test_type"}
-
-    # Cache query results
-    await cache_manager.handle_event(EventContext(
-        event=GraphEvent.QUERY_EXECUTED,
-        metadata=EventMetadata(affected_types=dependencies),
-        data={
-            "query_hash": query_hash,
-            "result": query_result
-        }
-    ))
-
-    # Read cached query results
-    await cache_manager.handle_event(EventContext(
-        event=GraphEvent.QUERY_EXECUTED,
-        metadata=EventMetadata(affected_types=dependencies),
-        data={"query_hash": query_hash}
-    ))
-
-    # Verify metrics
-    metrics = cache_manager.get_metrics()
-    assert metrics["hits"] == 1
-    assert metrics["misses"] == 1
-
-    # Invalidate by modifying a dependent type
-    await cache_manager.handle_event(EventContext(
-        event=GraphEvent.SCHEMA_MODIFIED,
-        metadata=EventMetadata(affected_types={"test_type"}),
-        data={}
-    ))
-
-    # Verify query cache was invalidated
-    await cache_manager.handle_event(EventContext(
-        event=GraphEvent.QUERY_EXECUTED,
-        metadata=EventMetadata(affected_types=dependencies),
-        data={"query_hash": query_hash}
-    ))
-
-    metrics = cache_manager.get_metrics()
-    assert metrics["misses"] == 3  # Initial write + schema modification + read after invalidation
-    assert metrics["hits"] == 1    # First successful read
-
-
-@pytest.mark.asyncio
-async def test_traversal_caching(cache_manager):
-    """Test handling of traversal execution events."""
-    traversal_hash = "test_traversal_hash"
-    traversal_result = [{"path": [{"id": "1", "type": "test_type"}]}]
-    dependencies = {"test_type"}
-
-    # Cache traversal results
-    await cache_manager.handle_event(EventContext(
-        event=GraphEvent.TRAVERSAL_EXECUTED,
-        metadata=EventMetadata(affected_types=dependencies),
-        data={
-            "traversal_hash": traversal_hash,
-            "result": traversal_result
-        }
-    ))
-
-    # Read cached traversal results
-    await cache_manager.handle_event(EventContext(
-        event=GraphEvent.TRAVERSAL_EXECUTED,
-        metadata=EventMetadata(affected_types=dependencies),
-        data={"traversal_hash": traversal_hash}
-    ))
-
-    # Verify metrics
-    metrics = cache_manager.get_metrics()
-    assert metrics["hits"] == 1
-    assert metrics["misses"] == 1
-
-    # Invalidate by modifying a dependent type
-    await cache_manager.handle_event(EventContext(
-        event=GraphEvent.SCHEMA_MODIFIED,
-        metadata=EventMetadata(affected_types={"test_type"}),
-        data={}
-    ))
-
-    # Verify traversal cache was invalidated
-    await cache_manager.handle_event(EventContext(
-        event=GraphEvent.TRAVERSAL_EXECUTED,
-        metadata=EventMetadata(affected_types=dependencies),
-        data={"traversal_hash": traversal_hash}
-    ))
-
-    metrics = cache_manager.get_metrics()
-    assert metrics["misses"] == 3  # Initial write + schema modification + read after invalidation
-    assert metrics["hits"] == 1    # First successful read
-
-
-@pytest.mark.asyncio
-async def test_cache_enable_disable(cache_manager, sample_entity):
-    """Test enabling and disabling the cache."""
-    # Cache should be enabled by default
-    await cache_manager.handle_event(EventContext(
-        event=GraphEvent.ENTITY_READ,
-        metadata=EventMetadata(entity_type=sample_entity["type"]),
-        data={
-            "entity_id": sample_entity["id"],
-            "result": sample_entity
-        }
-    ))
-
-    metrics = cache_manager.get_metrics()
-    assert metrics["misses"] == 1
+        data={"entity_id": entity_id, "result": entity_data},
+        metadata=EventMetadata(entity_type="person")
+    )
+    await cache_manager.handle_event(context)
+    assert store.get.await_count == 1
 
     # Disable cache
     cache_manager.disable()
+    await cache_manager.handle_event(context)
+    # Verify store was not accessed when cache disabled
+    assert store.get.await_count == 1
 
-    # Cache should not be used when disabled
-    await cache_manager.handle_event(EventContext(
-        event=GraphEvent.ENTITY_READ,
-        metadata=EventMetadata(entity_type=sample_entity["type"]),
-        data={"entity_id": sample_entity["id"]}
-    ))
-
-    metrics = cache_manager.get_metrics()
-    assert metrics["misses"] == 2
-    assert metrics["hits"] == 0
-
-    # Re-enable cache
+    # Enable cache
     cache_manager.enable()
-
-    # Cache should be used again
-    await cache_manager.handle_event(EventContext(
-        event=GraphEvent.ENTITY_READ,
-        metadata=EventMetadata(entity_type=sample_entity["type"]),
-        data={"entity_id": sample_entity["id"]}
-    ))
-
-    metrics = cache_manager.get_metrics()
-    assert metrics["hits"] == 1
-    assert metrics["misses"] == 2
-
-
-@pytest.mark.asyncio
-async def test_cache_clear(cache_manager, sample_entity):
-    """Test clearing the cache."""
-    # Cache an entity
-    await cache_manager.handle_event(EventContext(
-        event=GraphEvent.ENTITY_READ,
-        metadata=EventMetadata(entity_type=sample_entity["type"]),
-        data={
-            "entity_id": sample_entity["id"],
-            "result": sample_entity
-        }
-    ))
-
-    # Clear the cache
-    await cache_manager.clear()
-
-    # Verify cache was cleared
-    await cache_manager.handle_event(EventContext(
-        event=GraphEvent.ENTITY_READ,
-        metadata=EventMetadata(entity_type=sample_entity["type"]),
-        data={"entity_id": sample_entity["id"]}
-    ))
-
-    metrics = cache_manager.get_metrics()
-    assert metrics["misses"] == 2
-    assert metrics["hits"] == 0
+    await cache_manager.handle_event(context)
+    # Verify store was accessed again after re-enabling
+    assert store.get.await_count == 2

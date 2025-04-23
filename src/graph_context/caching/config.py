@@ -38,39 +38,31 @@ class CacheMetrics:
         }
 
 
+@dataclass
 class CacheConfig:
     """Configuration for the cache system."""
+    # Default cache settings (for backward compatibility)
+    max_size: int = 1000
+    default_ttl: float = 300.0  # 5 minutes in seconds
 
-    def __init__(
-        self,
-        max_size: int = 10000,
-        default_ttl: Optional[int] = None,
-        enable_metrics: bool = True,
-        type_ttls: Optional[Dict[str, int]] = None,
-    ):
-        """Initialize cache configuration.
+    # Entity cache settings
+    entity_cache_size: int = field(default=1000)
+    entity_cache_ttl: float = field(default=300.0)  # 5 minutes
 
-        Args:
-            max_size: Maximum number of entries in the cache
-            default_ttl: Default time-to-live in seconds for cache entries
-            enable_metrics: Whether to enable metrics tracking
-            type_ttls: Optional mapping of type names to TTL values
-        """
-        self.max_size = max_size
-        self.default_ttl = default_ttl
-        self.enable_metrics = enable_metrics
-        self.type_ttls = type_ttls or {}
+    # Relation cache settings
+    relation_cache_size: int = field(default=1000)
+    relation_cache_ttl: float = field(default=300.0)  # 5 minutes
 
-        # Set default TTLs for different operation types
-        if not self.type_ttls:
-            self.type_ttls = {
-                # Entities and relations have a longer TTL since they change less frequently
-                "entity": 3600,  # 1 hour
-                "relation": 3600,  # 1 hour
-                # Queries and traversals have a shorter TTL since they depend on multiple items
-                "query": 300,  # 5 minutes
-                "traversal": 300,  # 5 minutes
-            }
+    # Query cache settings
+    query_cache_size: int = field(default=500)
+    query_cache_ttl: float = field(default=60.0)  # 1 minute
+
+    # Traversal cache settings
+    traversal_cache_size: int = field(default=500)
+    traversal_cache_ttl: float = field(default=60.0)  # 1 minute
+
+    # Feature flags
+    enable_metrics: bool = field(default=True)
 
     def get_ttl_for_type(self, type_name: str) -> Optional[int]:
         """Get the TTL for a specific type.
@@ -81,7 +73,16 @@ class CacheConfig:
         Returns:
             TTL in seconds or None if not set
         """
-        return self.type_ttls.get(type_name, self.default_ttl)
+        if type_name == "entity":
+            return self.entity_cache_ttl
+        elif type_name == "relation":
+            return self.relation_cache_ttl
+        elif type_name == "query":
+            return self.query_cache_ttl
+        elif type_name == "traversal":
+            return self.traversal_cache_ttl
+        else:
+            return self.default_ttl
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert configuration to a dictionary.
@@ -93,7 +94,14 @@ class CacheConfig:
             "max_size": self.max_size,
             "default_ttl": self.default_ttl,
             "enable_metrics": self.enable_metrics,
-            "type_ttls": self.type_ttls,
+            "entity_cache_size": self.entity_cache_size,
+            "entity_cache_ttl": self.entity_cache_ttl,
+            "relation_cache_size": self.relation_cache_size,
+            "relation_cache_ttl": self.relation_cache_ttl,
+            "query_cache_size": self.query_cache_size,
+            "query_cache_ttl": self.query_cache_ttl,
+            "traversal_cache_size": self.traversal_cache_size,
+            "traversal_cache_ttl": self.traversal_cache_ttl,
         }
 
     @classmethod
@@ -107,8 +115,15 @@ class CacheConfig:
             New CacheConfig instance
         """
         return cls(
-            max_size=config.get("max_size", 10000),
-            default_ttl=config.get("default_ttl"),
+            max_size=config.get("max_size", 1000),
+            default_ttl=config.get("default_ttl", 300.0),
             enable_metrics=config.get("enable_metrics", True),
-            type_ttls=config.get("type_ttls"),
+            entity_cache_size=config.get("entity_cache_size", 1000),
+            entity_cache_ttl=config.get("entity_cache_ttl", 300.0),
+            relation_cache_size=config.get("relation_cache_size", 1000),
+            relation_cache_ttl=config.get("relation_cache_ttl", 300.0),
+            query_cache_size=config.get("query_cache_size", 500),
+            query_cache_ttl=config.get("query_cache_ttl", 60.0),
+            traversal_cache_size=config.get("traversal_cache_size", 500),
+            traversal_cache_ttl=config.get("traversal_cache_ttl", 60.0),
         )

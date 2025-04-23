@@ -1,0 +1,551 @@
+"""Cached graph context implementation.
+
+This module provides a cached implementation of the graph context interface,
+which wraps a base context and adds caching functionality using the decorator pattern.
+"""
+
+from typing import Optional, Dict, Any, List
+import logging
+
+from ..event_system import GraphEvent, EventContext, EventMetadata
+from ..types.type_base import Entity, Relation, QuerySpec, TraversalSpec
+from ..interface import GraphContext
+from ..exceptions import EntityNotFoundError
+from .cache_store import CacheEntry
+from .cache_manager import CacheManager
+from .config import CacheConfig
+
+
+logger = logging.getLogger(__name__)
+
+class CachedGraphContext(GraphContext):
+    """A decorator that adds caching to any GraphContext implementation.
+
+    This class wraps another graph context implementation and adds caching
+    functionality. It uses the cache manager to handle caching of entities,
+    relations, queries, and traversals.
+    """
+
+    def __init__(
+        self,
+        base_context: GraphContext,
+        cache_manager: CacheManager
+    ):
+        """Initialize the cached graph context.
+
+        Args:
+            base_context: The base graph context to wrap
+            cache_manager: The cache manager to use
+        """
+        self._base = base_context
+        self._cache_manager = cache_manager
+        self._initialized = False
+        self._in_transaction = False
+        self._transaction_cache = {}
+
+    async def _initialize(self) -> None:
+        """Initialize event subscriptions asynchronously."""
+        if self._initialized:
+            return
+
+        # Subscribe cache manager to base context events
+        if hasattr(self._base, '_events'):
+            await self._base._events.subscribe(GraphEvent.ENTITY_READ, self._cache_manager.handle_event)
+            await self._base._events.subscribe(GraphEvent.ENTITY_WRITE, self._cache_manager.handle_event)
+            await self._base._events.subscribe(GraphEvent.ENTITY_BULK_WRITE, self._cache_manager.handle_event)
+            await self._base._events.subscribe(GraphEvent.ENTITY_DELETE, self._cache_manager.handle_event)
+            await self._base._events.subscribe(GraphEvent.ENTITY_BULK_DELETE, self._cache_manager.handle_event)
+            await self._base._events.subscribe(GraphEvent.RELATION_READ, self._cache_manager.handle_event)
+            await self._base._events.subscribe(GraphEvent.RELATION_WRITE, self._cache_manager.handle_event)
+            await self._base._events.subscribe(GraphEvent.RELATION_BULK_WRITE, self._cache_manager.handle_event)
+            await self._base._events.subscribe(GraphEvent.RELATION_DELETE, self._cache_manager.handle_event)
+            await self._base._events.subscribe(GraphEvent.RELATION_BULK_DELETE, self._cache_manager.handle_event)
+            await self._base._events.subscribe(GraphEvent.QUERY_EXECUTED, self._cache_manager.handle_event)
+            await self._base._events.subscribe(GraphEvent.TRAVERSAL_EXECUTED, self._cache_manager.handle_event)
+            await self._base._events.subscribe(GraphEvent.SCHEMA_MODIFIED, self._cache_manager.handle_event)
+            await self._base._events.subscribe(GraphEvent.TYPE_MODIFIED, self._cache_manager.handle_event)
+            await self._base._events.subscribe(GraphEvent.TRANSACTION_BEGIN, self._cache_manager.handle_event)
+            await self._base._events.subscribe(GraphEvent.TRANSACTION_COMMIT, self._cache_manager.handle_event)
+            await self._base._events.subscribe(GraphEvent.TRANSACTION_ROLLBACK, self._cache_manager.handle_event)
+
+        self._initialized = True
+
+    def enable_caching(self) -> None:
+        """Enable caching."""
+        self._cache_manager.enable()
+
+    def disable_caching(self) -> None:
+        """Disable caching."""
+        self._cache_manager.disable()
+
+    async def cleanup(self) -> None:
+        """Clean up resources."""
+        await self._base.cleanup()
+
+    async def get_entity(self, entity_id: str) -> Entity | None:
+        """Get an entity by ID.
+
+        Args:
+            entity_id: The ID of the entity to get
+
+        Returns:
+            The entity if found, None otherwise
+
+        Raises:
+            EntityNotFoundError: If the entity does not exist
+        """
+        await self._initialize()
+        logger.debug(f"Getting entity {entity_id}")
+
+        # After rollback, always get fresh data from base context
+        if not self._in_transaction:
+            logger.debug(f"Not in transaction, getting fresh data from base context for {entity_id}")
+            result = await self._base.get_entity(entity_id)
+            if result is not None:
+                # Update cache with fresh data
+                entry = CacheEntry(
+                    value=result,
+                    entity_type=result["type"]
+                )
+                await self._cache_manager.store_manager.get_entity_store().set(entity_id, entry)
+                logger.debug(f"Updated cache with fresh data for entity {entity_id}")
+                return result
+            else:
+                logger.debug(f"Entity {entity_id} not found in base context")
+                raise EntityNotFoundError(f"Entity {entity_id} not found")
+
+        # If in transaction, check transaction cache first
+        if self._in_transaction and entity_id in self._transaction_cache:
+            logger.debug(f"Found entity {entity_id} in transaction cache")
+            return self._transaction_cache[entity_id]
+
+        # Try to get from cache
+        cached = await self._cache_manager.store_manager.get_entity_store().get(entity_id)
+        if cached is not None:
+            result = cached.value
+            if self._in_transaction:
+                self._transaction_cache[entity_id] = result
+                logger.debug(f"Cached entity {entity_id} in transaction cache")
+            logger.debug(f"Found entity {entity_id} in main cache")
+            return result
+
+        # Fall back to base context
+        logger.debug(f"Getting entity {entity_id} from base context")
+        result = await self._base.get_entity(entity_id)
+
+        # Cache the result if found
+        if result is not None:
+            entry = CacheEntry(
+                value=result,
+                entity_type=result["type"]
+            )
+            await self._cache_manager.store_manager.get_entity_store().set(entity_id, entry)
+            if self._in_transaction:
+                self._transaction_cache[entity_id] = result
+            logger.debug(f"Cached entity {entity_id} from base context")
+            return result
+        else:
+            logger.debug(f"Entity {entity_id} not found")
+            raise EntityNotFoundError(f"Entity {entity_id} not found")
+
+    async def get_relation(self, relation_id: str) -> Relation | None:
+        """Get a relation by ID.
+
+        Args:
+            relation_id: The ID of the relation to get
+
+        Returns:
+            The relation if found, None otherwise
+        """
+        await self._initialize()
+
+        # Try to get from cache first
+        cached = await self._cache_manager.store_manager.get_relation_store().get(relation_id)
+        if cached is not None:
+            return cached.value
+
+        # Fall back to base context
+        result = await self._base.get_relation(relation_id)
+
+        # Cache the result if found
+        if result is not None:
+            entry = CacheEntry(
+                value=result,
+                relation_type=result["type"]
+            )
+            await self._cache_manager.store_manager.get_relation_store().set(relation_id, entry)
+
+        return result
+
+    async def query(self, query_spec: QuerySpec) -> list[Entity]:
+        """Execute a query against the graph.
+
+        Args:
+            query_spec: The query specification
+
+        Returns:
+            The query results
+        """
+        await self._initialize()
+
+        # Try to get from cache first
+        query_hash = self._cache_manager._hash_query(query_spec)
+        cached = await self._cache_manager.store_manager.get_query_store().get(query_hash)
+        if cached is not None:
+            return cached.value
+
+        # Fall back to base context
+        result = await self._base.query(query_spec)
+
+        # Cache the result
+        if result is not None:
+            entry = CacheEntry(
+                value=result,
+                query_hash=query_hash
+            )
+            await self._cache_manager.store_manager.get_query_store().set(query_hash, entry)
+
+        return result
+
+    async def traverse(self, start_entity: str, traversal_spec: TraversalSpec) -> list[Entity]:
+        """Execute a traversal in the graph.
+
+        Args:
+            start_entity: ID of the entity to start traversal from
+            traversal_spec: The traversal specification
+
+        Returns:
+            The traversal results
+        """
+        await self._initialize()
+
+        # Try to get from cache first
+        traversal_hash = self._cache_manager._hash_query(traversal_spec)
+        cached = await self._cache_manager.store_manager.get_traversal_store().get(traversal_hash)
+        if cached is not None:
+            return cached.value
+
+        # Fall back to base context
+        result = await self._base.traverse(start_entity, traversal_spec)
+
+        # Cache the result
+        if result is not None:
+            entry = CacheEntry(
+                value=result,
+                query_hash=traversal_hash
+            )
+            await self._cache_manager.store_manager.get_traversal_store().set(traversal_hash, entry)
+
+        return result
+
+    async def create_entity(self, entity_type: str, properties: Dict[str, Any]) -> str:
+        """Create a new entity."""
+        await self._initialize()
+        entity_id = await self._base.create_entity(entity_type, properties)
+
+        # Cache the newly created entity
+        entity = await self._base.get_entity(entity_id)
+        if entity is not None:
+            entry = CacheEntry(
+                value=entity,
+                entity_type=entity_type
+            )
+            await self._cache_manager.store_manager.get_entity_store().set(entity_id, entry)
+
+        # Notify cache manager about the write
+        await self._cache_manager.handle_event(EventContext(
+            event=GraphEvent.ENTITY_WRITE,
+            data={"entity_id": entity_id},
+            metadata=EventMetadata(entity_type=entity_type)
+        ))
+
+        return entity_id
+
+    async def update_entity(self, entity_id: str, properties: Dict[str, Any]) -> bool:
+        """Update an existing entity."""
+        await self._initialize()
+        logger.debug(f"Updating entity {entity_id} with properties {properties}")
+
+        # Get current state before update if in transaction
+        if self._in_transaction:
+            try:
+                current_entity = await self.get_entity(entity_id)
+                logger.debug(f"Current entity state before update: {current_entity}")
+            except EntityNotFoundError:
+                logger.debug(f"No current state found for entity {entity_id}")
+                current_entity = None
+
+        success = await self._base.update_entity(entity_id, properties)
+
+        if success:
+            logger.debug(f"Entity {entity_id} updated successfully")
+
+            # Clear from transaction cache if in transaction
+            if self._in_transaction:
+                old_value = self._transaction_cache.pop(entity_id, None)
+                logger.debug(f"Cleared entity {entity_id} from transaction cache. Old value: {old_value}")
+
+            # Clear from main cache
+            await self._cache_manager.store_manager.get_entity_store().delete(entity_id)
+            logger.debug(f"Cleared entity {entity_id} from main cache")
+
+            # Notify cache manager about the write
+            await self._cache_manager.handle_event(EventContext(
+                event=GraphEvent.ENTITY_WRITE,
+                data={"entity_id": entity_id},
+                metadata=EventMetadata()
+            ))
+            logger.debug(f"Entity write event sent for {entity_id}")
+        else:
+            logger.debug(f"Failed to update entity {entity_id}")
+
+        return success
+
+    async def delete_entity(self, entity_id: str) -> bool:
+        """Delete an entity."""
+        await self._initialize()
+        success = await self._base.delete_entity(entity_id)
+
+        if success:
+            # Invalidate cache
+            await self._cache_manager.store_manager.get_entity_store().delete(entity_id)
+
+            # Notify cache manager about the delete
+            await self._cache_manager.handle_event(EventContext(
+                event=GraphEvent.ENTITY_DELETE,
+                data={"entity_id": entity_id},
+                metadata=EventMetadata()
+            ))
+
+        return success
+
+    async def create_relation(
+        self,
+        relation_type: str,
+        from_entity: str,
+        to_entity: str,
+        properties: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """Create a new relation."""
+        await self._initialize()
+        relation_id = await self._base.create_relation(relation_type, from_entity, to_entity, properties)
+
+        # Cache the newly created relation
+        relation = await self._base.get_relation(relation_id)
+        if relation is not None:
+            entry = CacheEntry(
+                value=relation,
+                relation_type=relation_type
+            )
+            await self._cache_manager.store_manager.get_relation_store().set(relation_id, entry)
+
+        # Notify cache manager about the write
+        await self._cache_manager.handle_event(EventContext(
+            event=GraphEvent.RELATION_WRITE,
+            data={"relation_id": relation_id},
+            metadata=EventMetadata(relation_type=relation_type)
+        ))
+
+        return relation_id
+
+    async def update_relation(self, relation_id: str, properties: Dict[str, Any]) -> bool:
+        """Update an existing relation."""
+        await self._initialize()
+        success = await self._base.update_relation(relation_id, properties)
+
+        if success:
+            # Invalidate cache
+            await self._cache_manager.store_manager.get_relation_store().delete(relation_id)
+
+            # Notify cache manager about the write
+            await self._cache_manager.handle_event(EventContext(
+                event=GraphEvent.RELATION_WRITE,
+                data={"relation_id": relation_id},
+                metadata=EventMetadata()
+            ))
+
+        return success
+
+    async def delete_relation(self, relation_id: str) -> bool:
+        """Delete a relation."""
+        await self._initialize()
+        success = await self._base.delete_relation(relation_id)
+
+        if success:
+            # Invalidate cache
+            await self._cache_manager.store_manager.get_relation_store().delete(relation_id)
+
+            # Notify cache manager about the delete
+            await self._cache_manager.handle_event(EventContext(
+                event=GraphEvent.RELATION_DELETE,
+                data={"relation_id": relation_id},
+                metadata=EventMetadata()
+            ))
+
+        return success
+
+    async def begin_transaction(self) -> None:
+        """Begin a new transaction."""
+        await self._initialize()
+        logger.debug("Beginning transaction")
+        await self._base.begin_transaction()
+
+        # Save current cache state
+        self._in_transaction = True
+        self._transaction_cache = {}
+        logger.debug("Transaction started - cache state initialized")
+
+        # Notify cache manager about transaction begin
+        await self._cache_manager.handle_event(EventContext(
+            event=GraphEvent.TRANSACTION_BEGIN,
+            data={},
+            metadata=EventMetadata()
+        ))
+        logger.debug("Transaction begin event sent to cache manager")
+
+    async def commit_transaction(self) -> None:
+        """Commit the current transaction."""
+        await self._initialize()
+        logger.debug("Committing transaction")
+
+        if not self._in_transaction:
+            logger.warning("Commit called but no active transaction")
+            return
+
+        await self._base.commit_transaction()
+        logger.debug("Base context transaction committed")
+
+        # Log transaction cache state before clearing
+        logger.debug(f"Transaction cache state before commit: {self._transaction_cache}")
+
+        # Clear transaction state
+        self._in_transaction = False
+        self._transaction_cache = {}
+        logger.debug("Transaction state cleared")
+
+        # Clear all caches to ensure we get fresh data
+        await self._cache_manager.store_manager.clear_all()
+        logger.debug("All caches cleared after commit")
+
+        # Notify cache manager about transaction commit
+        await self._cache_manager.handle_event(EventContext(
+            event=GraphEvent.TRANSACTION_COMMIT,
+            data={},
+            metadata=EventMetadata()
+        ))
+        logger.debug("Transaction commit event sent to cache manager")
+
+    async def rollback_transaction(self) -> None:
+        """Roll back the current transaction."""
+        await self._initialize()
+        logger.debug("Rolling back transaction")
+
+        if not self._in_transaction:
+            logger.warning("Rollback called but no active transaction")
+            return
+
+        # Log transaction cache state before rollback
+        logger.debug(f"Transaction cache state before rollback: {self._transaction_cache}")
+
+        # First rollback the base context
+        await self._base.rollback_transaction()
+        logger.debug("Base context transaction rolled back")
+
+        # Clear transaction state
+        self._in_transaction = False
+        self._transaction_cache = {}
+        logger.debug("Transaction state cleared")
+
+        # Clear all caches to ensure we get fresh data
+        await self._cache_manager.store_manager.clear_all()
+        logger.debug("All caches cleared after rollback")
+
+        # Notify cache manager about transaction rollback
+        await self._cache_manager.handle_event(EventContext(
+            event=GraphEvent.TRANSACTION_ROLLBACK,
+            data={},
+            metadata=EventMetadata()
+        ))
+        logger.debug("Transaction rollback event sent to cache manager")
+
+    async def bulk_create_entities(self, entity_type: str, entities: List[Dict[str, Any]]) -> List[str]:
+        """Create multiple entities in bulk."""
+        await self._initialize()
+        entity_ids = await self._base.bulk_create_entities(entity_type, entities)
+
+        # Notify cache manager about the bulk write
+        await self._cache_manager.handle_event(EventContext(
+            event=GraphEvent.ENTITY_BULK_WRITE,
+            data={"entity_ids": entity_ids},
+            metadata=EventMetadata(entity_type=entity_type)
+        ))
+
+        return entity_ids
+
+    async def bulk_update_entities(self, entity_type: str, entities: List[Dict[str, Any]]) -> None:
+        """Update multiple entities in bulk."""
+        await self._initialize()
+        await self._base.bulk_update_entities(entity_type, entities)
+
+        # Notify cache manager about the bulk write
+        entity_ids = [e["id"] for e in entities]
+        await self._cache_manager.handle_event(EventContext(
+            event=GraphEvent.ENTITY_BULK_WRITE,
+            data={"entity_ids": entity_ids},
+            metadata=EventMetadata(entity_type=entity_type)
+        ))
+
+    async def bulk_delete_entities(self, entity_type: str, entity_ids: List[str]) -> None:
+        """Delete multiple entities in bulk."""
+        await self._initialize()
+        await self._base.bulk_delete_entities(entity_type, entity_ids)
+
+        # Notify cache manager about the bulk delete
+        await self._cache_manager.handle_event(EventContext(
+            event=GraphEvent.ENTITY_BULK_DELETE,
+            data={"entity_ids": entity_ids},
+            metadata=EventMetadata(entity_type=entity_type)
+        ))
+
+    async def bulk_create_relations(
+        self,
+        relation_type: str,
+        relations: List[Dict[str, Any]]
+    ) -> List[str]:
+        """Create multiple relations in bulk."""
+        await self._initialize()
+        relation_ids = await self._base.bulk_create_relations(relation_type, relations)
+
+        # Notify cache manager about the bulk write
+        await self._cache_manager.handle_event(EventContext(
+            event=GraphEvent.RELATION_BULK_WRITE,
+            data={"relation_ids": relation_ids},
+            metadata=EventMetadata(relation_type=relation_type)
+        ))
+
+        return relation_ids
+
+    async def bulk_update_relations(self, relation_type: str, relations: List[Dict[str, Any]]) -> None:
+        """Update multiple relations in bulk."""
+        await self._initialize()
+        await self._base.bulk_update_relations(relation_type, relations)
+
+        # Notify cache manager about the bulk write
+        relation_ids = [r["id"] for r in relations]
+        await self._cache_manager.handle_event(EventContext(
+            event=GraphEvent.RELATION_BULK_WRITE,
+            data={"relation_ids": relation_ids},
+            metadata=EventMetadata(relation_type=relation_type)
+        ))
+
+    async def bulk_delete_relations(self, relation_type: str, relation_ids: List[str]) -> None:
+        """Delete multiple relations in bulk."""
+        await self._initialize()
+        await self._base.bulk_delete_relations(relation_type, relation_ids)
+
+        # Notify cache manager about the bulk delete
+        await self._cache_manager.handle_event(EventContext(
+            event=GraphEvent.RELATION_BULK_DELETE,
+            data={"relation_ids": relation_ids},
+            metadata=EventMetadata(relation_type=relation_type)
+        ))
