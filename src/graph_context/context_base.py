@@ -165,8 +165,7 @@ class BaseGraphContext(GraphContext):
                 if prop_def.required:
                     raise ValidationError(
                         f"Missing required property: {prop_name}",
-                        entity_type=entity_type,
-                        property=prop_name
+                        field=prop_name
                     )
                 if prop_def.default is not None:
                     validated_props[prop_name] = prop_def.default
@@ -181,8 +180,7 @@ class BaseGraphContext(GraphContext):
             except ValidationError as e:
                 raise ValidationError(
                     str(e),
-                    entity_type=entity_type,
-                    property=prop_name
+                    field=prop_name
                 ) from e
 
         # Check for unknown properties
@@ -190,8 +188,7 @@ class BaseGraphContext(GraphContext):
             if prop_name not in type_def.properties:
                 raise ValidationError(
                     f"Unknown property: {prop_name}",
-                    entity_type=entity_type,
-                    property=prop_name
+                    field=prop_name
                 )
 
         return validated_props
@@ -231,14 +228,12 @@ class BaseGraphContext(GraphContext):
         if from_entity_type not in type_def.from_types:
             raise ValidationError(
                 f"Invalid from_entity_type: {from_entity_type}",
-                relation_type=relation_type,
                 field="from_entity_type"
             )
 
         if to_entity_type not in type_def.to_types:
             raise ValidationError(
                 f"Invalid to_entity_type: {to_entity_type}",
-                relation_type=relation_type,
                 field="to_entity_type"
             )
 
@@ -254,8 +249,7 @@ class BaseGraphContext(GraphContext):
                 if prop_def.required:
                     raise ValidationError(
                         f"Missing required property: {prop_name}",
-                        relation_type=relation_type,
-                        property=prop_name
+                        field=prop_name
                     )
                 if prop_def.default is not None:
                     validated_props[prop_name] = prop_def.default
@@ -270,8 +264,7 @@ class BaseGraphContext(GraphContext):
             except ValidationError as e:
                 raise ValidationError(
                     str(e),
-                    relation_type=relation_type,
-                    property=prop_name
+                    field=prop_name
                 ) from e
 
         # Check for unknown properties
@@ -279,8 +272,7 @@ class BaseGraphContext(GraphContext):
             if prop_name not in type_def.properties:
                 raise ValidationError(
                     f"Unknown property: {prop_name}",
-                    relation_type=relation_type,
-                    property=prop_name
+                    field=prop_name
                 )
 
         return validated_props

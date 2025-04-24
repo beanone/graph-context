@@ -1,7 +1,7 @@
 """Tests for the graph traversal module."""
 import pytest
 from datetime import datetime, UTC
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Protocol
 from dataclasses import asdict
 
 from graph_context.types.type_base import Entity, Relation
@@ -15,6 +15,18 @@ from graph_context.traversal import (
 )
 
 
+class GraphLike(Protocol):
+    """Protocol defining the minimal interface needed for graph traversal."""
+
+    async def get_entity(self, entity_id: str) -> Optional[Entity]:
+        """Get an entity by ID."""
+        ...
+
+    def get_relations(self) -> Dict[str, Relation]:
+        """Get all relations in the graph."""
+        ...
+
+
 class MockGraph(GraphLike):
     """Mock graph implementation for testing."""
 
@@ -22,7 +34,7 @@ class MockGraph(GraphLike):
         self.entities: Dict[str, Entity] = {}
         self.relations: Dict[str, Relation] = {}
 
-    def get_entity(self, entity_id: str) -> Optional[Entity]:
+    async def get_entity(self, entity_id: str) -> Optional[Entity]:
         return self.entities.get(entity_id)
 
     def get_relations(self) -> Dict[str, Relation]:
@@ -65,7 +77,7 @@ class DiamondGraph(GraphLike):
         self.entities = {e.id: e for e in entities}
         self.relations = {r.id: r for r in relations}
 
-    def get_entity(self, entity_id: str) -> Optional[Entity]:
+    async def get_entity(self, entity_id: str) -> Optional[Entity]:
         return self.entities.get(entity_id)
 
     def get_relations(self) -> Dict[str, Relation]:
@@ -126,7 +138,7 @@ def cyclic_graph():
 def empty_graph():
     """Create an empty graph for testing."""
     class EmptyGraph(GraphLike):
-        def get_entity(self, entity_id: str) -> Optional[Entity]:
+        async def get_entity(self, entity_id: str) -> Optional[Entity]:
             return None
         def get_relations(self) -> Dict[str, Relation]:
             return {}
@@ -158,20 +170,21 @@ def test_create_traversal_spec():
     assert spec.return_paths
 
 
-def test_simple_traversal(simple_graph):
+@pytest.mark.asyncio
+async def test_simple_traversal(simple_graph):
     """Test basic traversal functionality."""
     # Test outbound traversal
-    results = traverse(simple_graph, "A", {"direction": "outbound"})
+    results = await traverse(simple_graph, "A", {"direction": "outbound"})
     assert len(results) == 4
     assert all(isinstance(r, Entity) for r in results)
     assert {r.id for r in results} == {"B", "C", "D", "E"}
 
     # Test inbound traversal (should find nothing from A)
-    results = traverse(simple_graph, "A", {"direction": "inbound"})
+    results = await traverse(simple_graph, "A", {"direction": "inbound"})
     assert len(results) == 0
 
     # Test with specific relation type
-    results = traverse(simple_graph, "A", {
+    results = await traverse(simple_graph, "A", {
         "direction": "outbound",
         "relation_types": ["parent"]
     })
@@ -179,7 +192,8 @@ def test_simple_traversal(simple_graph):
     assert {r.id for r in results} == {"B", "D"}
 
 
-def test_path_tracking(simple_graph):
+@pytest.mark.asyncio
+async def test_path_tracking(simple_graph):
     """Test that path information is correctly recorded."""
     # Create a simple chain: A -> B -> C
     spec = {
@@ -187,7 +201,7 @@ def test_path_tracking(simple_graph):
         "return_paths": True,
         "include_start": True
     }
-    paths = traverse(simple_graph, "A", spec)
+    paths = await traverse(simple_graph, "A", spec)
 
     # Verify we get all valid paths
     assert len([p for p in paths if p.entity.id == "A"]) == 1  # Start node
@@ -199,10 +213,11 @@ def test_path_tracking(simple_graph):
         assert path.depth == len(path.path)  # Depth should match path length
 
 
-def test_max_depth(simple_graph):
+@pytest.mark.asyncio
+async def test_max_depth(simple_graph):
     """Test depth limiting in traversal."""
     # Depth 1 should only find direct connections
-    results = traverse(simple_graph, "A", {
+    results = await traverse(simple_graph, "A", {
         "direction": "outbound",
         "max_depth": 1
     })
@@ -210,11 +225,11 @@ def test_max_depth(simple_graph):
     assert {r.id for r in results} == {"B", "D"}
 
     # Depth 0 should find nothing (since include_start is False by default)
-    results = traverse(simple_graph, "A", {"max_depth": 0})
+    results = await traverse(simple_graph, "A", {"max_depth": 0})
     assert len(results) == 0
 
     # Depth 0 with include_start should only find start node
-    results = traverse(simple_graph, "A", {
+    results = await traverse(simple_graph, "A", {
         "max_depth": 0,
         "include_start": True
     })
@@ -222,15 +237,16 @@ def test_max_depth(simple_graph):
     assert results[0].id == "A"
 
 
-def test_cycle_handling(cyclic_graph):
+@pytest.mark.asyncio
+async def test_cycle_handling(cyclic_graph):
     """Test handling of cycles in the graph."""
     # Without path tracking, each node should appear once
-    results = traverse(cyclic_graph, "A", {"direction": "outbound"})
+    results = await traverse(cyclic_graph, "A", {"direction": "outbound"})
     assert len(results) == 2  # B and C (A is excluded by default)
     assert {r.id for r in results} == {"B", "C"}
 
     # With path tracking, we should respect cycle prevention
-    results = traverse(cyclic_graph, "A", {
+    results = await traverse(cyclic_graph, "A", {
         "direction": "outbound",
         "return_paths": True,
         "max_depth": 3  # Limit depth to prevent infinite paths
@@ -242,16 +258,18 @@ def test_cycle_handling(cyclic_graph):
         assert len(node_ids) == len(path.path)  # No repeated nodes in path
 
 
-def test_invalid_start_entity(simple_graph):
+@pytest.mark.asyncio
+async def test_invalid_start_entity(simple_graph):
     """Test traversal with invalid start entity."""
     with pytest.raises(ValueError):
-        traverse(simple_graph, "nonexistent", {})
+        await traverse(simple_graph, "nonexistent", {})
 
 
-def test_direction_filtering(simple_graph):
+@pytest.mark.asyncio
+async def test_direction_filtering(simple_graph):
     """Test filtering by direction."""
     # From B, outbound should find immediate neighbors only
-    results = traverse(simple_graph, "B", {
+    results = await traverse(simple_graph, "B", {
         "direction": "outbound",
         "max_depth": 1  # Limit to immediate neighbors
     })
@@ -259,7 +277,7 @@ def test_direction_filtering(simple_graph):
     assert results[0].id == "C"
 
     # From B, inbound should find immediate neighbors only
-    results = traverse(simple_graph, "B", {
+    results = await traverse(simple_graph, "B", {
         "direction": "inbound",
         "max_depth": 1  # Limit to immediate neighbors
     })
@@ -267,7 +285,7 @@ def test_direction_filtering(simple_graph):
     assert results[0].id == "A"
 
     # From B, any direction should find immediate neighbors only
-    results = traverse(simple_graph, "B", {
+    results = await traverse(simple_graph, "B", {
         "direction": "any",
         "max_depth": 1  # Limit to immediate neighbors
     })
@@ -275,11 +293,12 @@ def test_direction_filtering(simple_graph):
     assert {r.id for r in results} == {"A", "C"}
 
 
-def test_relation_type_filtering(simple_graph):
+@pytest.mark.asyncio
+async def test_relation_type_filtering(simple_graph):
     """Test filtering by relation type."""
     # From A, following only friend relations
     # Should find no direct friends
-    results = traverse(simple_graph, "A", {
+    results = await traverse(simple_graph, "A", {
         "direction": "outbound",
         "relation_types": ["friend"]
     })
@@ -287,7 +306,7 @@ def test_relation_type_filtering(simple_graph):
 
     # From A, following only parent relations
     # Should find direct children B and D
-    results = traverse(simple_graph, "A", {
+    results = await traverse(simple_graph, "A", {
         "direction": "outbound",
         "relation_types": ["parent"]
     })
@@ -295,7 +314,7 @@ def test_relation_type_filtering(simple_graph):
     assert {r.id for r in results} == {"B", "D"}
 
     # Test with return_paths to ensure only friend relations are followed
-    results = traverse(simple_graph, "B", {
+    results = await traverse(simple_graph, "B", {
         "direction": "outbound",
         "relation_types": ["friend"],
         "return_paths": True
@@ -305,16 +324,17 @@ def test_relation_type_filtering(simple_graph):
     assert results[0].path[0][0].type == "friend"
 
 
-def test_traversal_strategies(simple_graph):
+@pytest.mark.asyncio
+async def test_traversal_strategies(simple_graph):
     """Test different traversal strategies (BFS vs DFS)."""
     # Test BFS strategy
-    bfs_results = traverse(simple_graph, "A", {
+    bfs_results = await traverse(simple_graph, "A", {
         "direction": "outbound",
         "return_paths": True
     }, strategy="bfs")
 
     # Test DFS strategy
-    dfs_results = traverse(simple_graph, "A", {
+    dfs_results = await traverse(simple_graph, "A", {
         "direction": "outbound",
         "return_paths": True
     }, strategy="dfs")
@@ -331,13 +351,14 @@ def test_traversal_strategies(simple_graph):
 
     # Test invalid strategy
     with pytest.raises(ValueError):
-        traverse(simple_graph, "A", {}, strategy="invalid")
+        await traverse(simple_graph, "A", {}, strategy="invalid")
 
 
-def test_max_paths_per_node(cyclic_graph):
+@pytest.mark.asyncio
+async def test_max_paths_per_node(cyclic_graph):
     """Test the max_paths_per_node limit in traversal."""
     # Set a small max_paths_per_node limit
-    results = traverse(cyclic_graph, "A", {
+    results = await traverse(cyclic_graph, "A", {
         "direction": "outbound",
         "return_paths": True,
         "max_paths_per_node": 2
@@ -352,7 +373,8 @@ def test_max_paths_per_node(cyclic_graph):
     assert all(count <= 2 for count in path_counts.values())
 
 
-def test_mixed_directional_relations():
+@pytest.mark.asyncio
+async def test_mixed_directional_relations():
     """Test behavior with mixed bidirectional and unidirectional relations."""
     graph = MockGraph()
     # Create a diamond pattern with mixed directions
@@ -370,7 +392,7 @@ def test_mixed_directional_relations():
 
     # Test outbound traversal
     spec = create_traversal_spec(direction="outbound", return_paths=True)
-    result = traverse(graph, "1", asdict(spec))
+    result = await traverse(graph, "1", asdict(spec))
     assert len(result) > 0
     # Verify we can reach node 4 through both paths
     paths_to_4 = [p for p in result if p.entity.id == "4"]
@@ -378,14 +400,15 @@ def test_mixed_directional_relations():
 
     # Test inbound traversal
     spec = create_traversal_spec(direction="inbound", return_paths=True)
-    result = traverse(graph, "4", asdict(spec))
+    result = await traverse(graph, "4", asdict(spec))
     assert len(result) > 0
     # Verify we can reach node 1 through the bidirectional relation
     paths_to_1 = [p for p in result if p.entity.id == "1"]
     assert len(paths_to_1) > 0
 
 
-def test_many_paths_per_node():
+@pytest.mark.asyncio
+async def test_many_paths_per_node():
     """Test behavior with many paths to the same node."""
     graph = MockGraph()
     # Create a complete graph with 5 nodes
@@ -397,7 +420,7 @@ def test_many_paths_per_node():
 
     # Test with default max_paths_per_node
     spec = create_traversal_spec(return_paths=True)
-    result = traverse(graph, "1", asdict(spec))
+    result = await traverse(graph, "1", asdict(spec))
     # Should be limited by max_paths_per_node
     node_path_counts = {}
     for path in result:
@@ -407,7 +430,7 @@ def test_many_paths_per_node():
 
     # Test with custom max_paths_per_node
     spec = create_traversal_spec(return_paths=True, max_paths_per_node=5)
-    result = traverse(graph, "1", asdict(spec))
+    result = await traverse(graph, "1", asdict(spec))
     node_path_counts = {}
     for path in result:
         node_id = path.entity.id
@@ -415,7 +438,8 @@ def test_many_paths_per_node():
         assert node_path_counts[node_id] <= 5
 
 
-def test_empty_graph(empty_graph):
+@pytest.mark.asyncio
+async def test_empty_graph(empty_graph):
     """Test traversal behavior with an empty graph."""
     spec = {
         "direction": "any",
@@ -426,15 +450,16 @@ def test_empty_graph(empty_graph):
         "max_paths_per_node": 100
     }
     with pytest.raises(ValueError, match="Start entity not found"):
-        traverse(empty_graph, "non_existent", spec)
+        await traverse(empty_graph, "non_existent", spec)
 
 
-def test_self_referential_relation(cyclic_graph):
+@pytest.mark.asyncio
+async def test_self_referential_relation(cyclic_graph):
     """Test traversal correctly handles self-referential relations (cycle detection)."""
     # Add a self-referential relation
     cyclic_graph.add_relation("r_self", "friend", "C", "C")
 
-    results = traverse(cyclic_graph, "A", {
+    results = await traverse(cyclic_graph, "A", {
         "direction": "outbound",
         "return_paths": True,
         "max_depth": 5 # Allow deeper traversal

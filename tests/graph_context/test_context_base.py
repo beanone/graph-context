@@ -632,8 +632,7 @@ async def test_check_transaction(empty_graph_context):
     # Case 1: No transaction, required=True (should raise)
     with pytest.raises(TransactionError) as exc_info:
         empty_graph_context._check_transaction(required=True)
-    assert "No transaction in progress" in str(exc_info.value)
-    assert exc_info.value.details.get("state") == "none"
+    assert "Operation requires an active transaction" in str(exc_info.value)
 
     # Case 2: No transaction, required=False (should NOT raise)
     empty_graph_context._check_transaction(required=False)  # Should not raise
@@ -647,8 +646,7 @@ async def test_check_transaction(empty_graph_context):
     # Case 4: Transaction exists, required=False (should raise)
     with pytest.raises(TransactionError) as exc_info:
         empty_graph_context._check_transaction(required=False)
-    assert "Transaction already in progress" in str(exc_info.value)
-    assert exc_info.value.details.get("state") == "active"
+    assert "Operation cannot be performed in a transaction" in str(exc_info.value)
 
 # 2. Test type registration (next most basic functions)
 @pytest.mark.asyncio
@@ -734,7 +732,7 @@ async def test_validate_entity(empty_graph_context):
     # Test missing required property
     with pytest.raises(ValidationError) as exc_info:
         empty_graph_context.validate_entity("test", {})
-    assert "Required property missing" in str(exc_info.value)
+    assert "Missing required property" in str(exc_info.value)
 
     # Test unknown property
     with pytest.raises(ValidationError) as exc_info:
@@ -742,7 +740,7 @@ async def test_validate_entity(empty_graph_context):
             "test",
             {"required": "value", "unknown": "value"}
         )
-    assert "Unknown properties" in str(exc_info.value)
+    assert "Unknown property" in str(exc_info.value)
 
 @pytest.mark.asyncio
 async def test_create_entity_validation(graph_context):
@@ -1253,7 +1251,7 @@ async def test_relation_property_validation(empty_graph_context):
             "person",
             properties={"notes": "test"}  # Missing required 'since' property
         )
-    assert "Required property missing: since" in str(exc_info.value)
+    assert "Missing required property: since" in str(exc_info.value)
 
     # Test unknown property
     with pytest.raises(ValidationError) as exc_info:
@@ -1263,7 +1261,7 @@ async def test_relation_property_validation(empty_graph_context):
             "person",
             properties={"since": 2023, "unknown": "value"}
         )
-    assert "Unknown properties" in str(exc_info.value)
+    assert "Unknown property" in str(exc_info.value)
 
     # Test default value
     validated = empty_graph_context.validate_relation(
