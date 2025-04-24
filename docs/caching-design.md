@@ -2,7 +2,7 @@
 
 ## Overview
 
-The caching system for the Graph Context component is designed to be schema-aware and event-driven, providing efficient caching while maintaining data consistency with schema changes. This design focuses on simplicity and extensibility, laying the groundwork for future versioning support.
+The caching system for the Graph Context component is designed to be schema-aware and event-driven, providing efficient caching while maintaining data consistency with schema changes. The implementation uses a decorator pattern to add caching capabilities to any graph context implementation, with a focus on transaction support, type awareness, and efficient invalidation strategies.
 
 ## Architecture Diagrams
 
@@ -273,66 +273,149 @@ graph LR
     D --> K[query_hash]
 ```
 
-## Core Components
+## Implementation Details
 
-### 1. Graph Events
+### Core Components
 
-The system uses an event-based architecture to handle both operations and schema changes:
+1. **CachedGraphContext**
+   - Implements decorator pattern to wrap any graph context
+   - Provides caching for all graph operations
+   - Maintains transaction awareness
+   - Delegates to underlying context when needed
 
-```python
-class GraphEvent(Enum):
-    # Operation Events
-    ENTITY_READ = "entity:read"
-    ENTITY_CREATED = "entity:created"
-    ENTITY_UPDATED = "entity:updated"
-    ENTITY_DELETED = "entity:deleted"
+2. **CacheManager**
+   - Central component for cache operations
+   - Handles all graph events
+   - Manages transaction state
+   - Collects cache metrics
+   - Coordinates between components
 
-    RELATION_READ = "relation:read"
-    RELATION_CREATED = "relation:created"
-    RELATION_UPDATED = "relation:updated"
-    RELATION_DELETED = "relation:deleted"
+3. **CacheStore**
+   - Provides TTL-based caching
+   - Tracks type dependencies
+   - Manages query result caching
+   - Handles entity-relation dependencies
+   - Supports efficient bulk operations
 
-    QUERY_EXECUTED = "query:executed"
+4. **CacheEntry**
+   - Generic container for cached values
+   - Stores metadata (creation time, types)
+   - Tracks dependencies
+   - Supports query result caching
 
-    # Schema Events
-    SCHEMA_ENTITY_TYPE_MODIFIED = "schema:entity_type:modified"
-    SCHEMA_RELATION_TYPE_MODIFIED = "schema:relation_type:modified"
-    SCHEMA_TYPE_DELETED = "schema:type:deleted"
-```
+### Key Features
 
-### 2. Type-Aware Cache
+1. **Transaction Support**
+   - Separate transaction cache
+   - Proper handling of transaction boundaries
+   - Rollback support
+   - Consistency during concurrent operations
 
-The cache implementation tracks dependencies between types and cached data:
+2. **Type Awareness**
+   - Schema-based invalidation
+   - Type dependency tracking
+   - Efficient type-based cache clearing
+   - Support for schema evolution
 
-```python
-class TypeAwareCache:
-    _cache: Dict[str, Any]  # Main cache storage
-    _type_dependencies: Dict[str, Set[str]]  # Type -> Cache Keys mapping
-    _query_dependencies: Dict[str, Set[str]]  # Type -> Query Cache Keys mapping
-```
+3. **Query Caching**
+   - Result caching with dependency tracking
+   - Query hash-based lookup
+   - Automatic invalidation on dependencies
+   - Support for complex queries
 
-Key Features:
-- Type-based dependency tracking
-- Separate tracking for query results
-- Efficient invalidation patterns
-- Support for complex type relationships
+4. **Event System Integration**
+   - Subscription to all graph events
+   - Event-driven cache updates
+   - Automatic invalidation
+   - Metrics collection
 
-### 3. Cache Manager
+5. **Performance Optimizations**
+   - TTL-based expiration
+   - Bulk operation support
+   - Efficient dependency tracking
+   - Memory-efficient storage
 
-The SchemaAwareCacheManager orchestrates caching operations and event handling:
+### Cache Invalidation Strategies
 
-```python
-class SchemaAwareCacheManager:
-    cache: TypeAwareCache
-    enabled: bool
-    _handlers: Dict[GraphEvent, Callable]
-```
+1. **Type-Based Invalidation**
+   - Triggered by schema changes
+   - Clears all entries of affected type
+   - Handles cascading dependencies
+   - Maintains consistency
 
-Responsibilities:
-- Event handling and routing
-- Cache operation coordination
-- Type invalidation management
-- Query result caching
+2. **Query-Based Invalidation**
+   - Triggered by data changes
+   - Clears affected query results
+   - Tracks query dependencies
+   - Supports partial invalidation
+
+3. **Dependency-Based Invalidation**
+   - Tracks entity-relation dependencies
+   - Handles cascading updates
+   - Maintains referential integrity
+   - Supports complex graphs
+
+4. **Transaction-Aware Invalidation**
+   - Respects transaction boundaries
+   - Supports rollback scenarios
+   - Maintains ACID properties
+   - Handles concurrent access
+
+### Configuration
+
+The caching system is highly configurable through the `CacheConfig` class:
+
+1. **Cache Settings**
+   - TTL duration
+   - Maximum cache size
+   - Metrics collection
+   - Debug logging
+
+2. **Store Configuration**
+   - Store implementation selection
+   - Store-specific settings
+   - Connection parameters
+   - Persistence options
+
+3. **Event System Integration**
+   - Event subscription configuration
+   - Handler registration
+   - Event filtering
+   - Custom event support
+
+### Metrics and Monitoring
+
+1. **Cache Performance**
+   - Hit/miss ratios
+   - Operation latencies
+   - Cache size tracking
+   - Memory usage
+
+2. **Health Monitoring**
+   - Store connectivity
+   - Cache consistency
+   - Error tracking
+   - Performance alerts
+
+### Best Practices
+
+1. **Cache Usage**
+   - Configure appropriate TTLs
+   - Monitor cache size
+   - Use transactions appropriately
+   - Handle errors gracefully
+
+2. **Performance Optimization**
+   - Enable metrics collection
+   - Monitor hit ratios
+   - Tune cache settings
+   - Optimize queries
+
+3. **Maintenance**
+   - Regular monitoring
+   - Performance tuning
+   - Error handling
+   - Capacity planning
 
 ## Caching Strategies
 

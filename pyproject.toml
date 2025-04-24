@@ -64,6 +64,7 @@ addopts = "--cov=graph_context --cov-report=term-missing"
 
 [tool.coverage.run]
 omit = ["src/graph_context/interface.py"]
+source = ["src"]
 
 [tool.hatch.version]
 source = "vcs"

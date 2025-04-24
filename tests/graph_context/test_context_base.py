@@ -20,6 +20,8 @@ from graph_context.types.type_base import (
     RelationType,
 )
 
+from graph_context.event_system import GraphEvent
+
 logger = logging.getLogger(__name__)
 
 class TestGraphContext(BaseGraphContext):
@@ -302,10 +304,21 @@ class TestGraphContext(BaseGraphContext):
         await self._validate_entity_impl(entity_type, properties)
 
         entity_id = self._generate_id()
+
+        # Get the entity type definition
+        type_def = self._entity_types[entity_type]
+
+        # Add default values for optional properties
+        validated_props = properties.copy()
+        for prop_name, prop_def in type_def.properties.items():
+            if prop_name not in validated_props and not prop_def.required and prop_def.default is not None:
+                validated_props[prop_name] = prop_def.default
+
         entity = {
             "type": entity_type,
-            "properties": properties
+            "properties": validated_props
         }
+
         if self._in_transaction:
             self._transaction_entities[entity_id] = entity
         else:
@@ -499,7 +512,7 @@ class TestGraphContext(BaseGraphContext):
                 raise ValidationError(f"Value {value} does not match pattern {constraints['pattern'].pattern}")
         return value
 
-    async def _validate_entity_impl(self, entity_type: str, properties: Dict[str, Any]) -> None:
+    async def _validate_entity_impl(self, entity_type: str, properties: dict[str, Any]) -> None:
         """Implementation method to validate an entity against its schema."""
         if entity_type not in self._entity_types:
             raise SchemaError(f"Entity type {entity_type} is not registered")
@@ -512,7 +525,7 @@ class TestGraphContext(BaseGraphContext):
             if prop_name not in properties:
                 raise ValidationError(f"Missing required property: {prop_name}")
 
-        # Validate property types
+        # Validate property types and constraints
         for prop_name, value in properties.items():
             if prop_name not in schema.properties:
                 raise ValidationError(f"Unknown property: {prop_name}")
@@ -520,6 +533,7 @@ class TestGraphContext(BaseGraphContext):
             prop_def = schema.properties[prop_name]
             prop_type = prop_def.type
 
+            # Type validation
             if prop_type == PropertyType.STRING and not isinstance(value, str):
                 raise ValidationError(f"Property {prop_name} must be a string")
             elif prop_type == PropertyType.INTEGER and not isinstance(value, int):
@@ -528,6 +542,40 @@ class TestGraphContext(BaseGraphContext):
                 raise ValidationError(f"Property {prop_name} must be a number")
             elif prop_type == PropertyType.BOOLEAN and not isinstance(value, bool):
                 raise ValidationError(f"Property {prop_name} must be a boolean")
+
+            # Validate constraints
+            if prop_def.constraints:
+                # Pattern validation for strings
+                if prop_type == PropertyType.STRING and "pattern" in prop_def.constraints:
+                    import re
+                    pattern = prop_def.constraints["pattern"]
+                    if not re.match(pattern, value):
+                        raise ValidationError(
+                            f"Property {prop_name} value '{value}' does not match pattern {pattern}"
+                        )
+
+                # Bounds validation for numbers
+                if prop_type in (PropertyType.INTEGER, PropertyType.FLOAT):
+                    if "min_value" in prop_def.constraints:
+                        min_value = prop_def.constraints["min_value"]
+                        if value < min_value:
+                            raise ValidationError(
+                                f"Property {prop_name} value {value} is below minimum value {min_value}"
+                            )
+                    if "max_value" in prop_def.constraints:
+                        max_value = prop_def.constraints["max_value"]
+                        if value > max_value:
+                            raise ValidationError(
+                                f"Property {prop_name} value {value} exceeds maximum value {max_value}"
+                            )
+
+                # Enum validation
+                if "allowed_values" in prop_def.constraints:
+                    allowed_values = prop_def.constraints["allowed_values"]
+                    if value not in allowed_values:
+                        raise ValidationError(
+                            f"Property {prop_name} value '{value}' not in allowed values: {allowed_values}"
+                        )
 
     async def _validate_relation_impl(self, relation_type: str, properties: Dict[str, Any]) -> None:
         """Implementation method to validate a relation against its schema."""
@@ -1026,6 +1074,18 @@ async def test_transaction_methods(empty_graph_context):
     await empty_graph_context.rollback_transaction()
     assert empty_graph_context._in_transaction is False
 
+    # Test error cases
+    await empty_graph_context.begin_transaction()
+    with pytest.raises(TransactionError):
+        await empty_graph_context.begin_transaction()  # Already in transaction
+    await empty_graph_context.rollback_transaction()
+
+    with pytest.raises(TransactionError):
+        await empty_graph_context.commit_transaction()  # No transaction
+
+    with pytest.raises(TransactionError):
+        await empty_graph_context.rollback_transaction()  # No transaction
+
 @pytest.mark.asyncio
 async def test_transaction_operations(empty_graph_context):
     """Test basic transaction operations."""
@@ -1521,3 +1581,299 @@ async def test_relation_schema_validation(graph_context):
         {"role": "Developer", "salary": 100000.0, "is_remote": True}
     )
     assert relation_id is not None
+
+@pytest.mark.asyncio
+async def test_event_system_integration(graph_context):
+    """Test event system integration."""
+    events_received = []
+
+    # Register event handlers
+    async def schema_handler(event_data):
+        events_received.append(("schema", event_data.data))
+
+    async def type_handler(event_data):
+        events_received.append(("type", event_data.data))
+
+    # Properly await the subscribe calls
+    await graph_context._events.subscribe(GraphEvent.SCHEMA_MODIFIED, schema_handler)
+    await graph_context._events.subscribe(GraphEvent.TYPE_MODIFIED, type_handler)
+
+    # Register new types and verify events
+    test_entity = EntityType(
+        name="TestEntity",
+        properties={
+            "name": PropertyDefinition(type=PropertyType.STRING, required=True)
+        }
+    )
+    await graph_context.register_entity_type(test_entity)
+
+    test_relation = RelationType(
+        name="test_relation",
+        from_types=["TestEntity"],
+        to_types=["TestEntity"]
+    )
+    await graph_context.register_relation_type(test_relation)
+
+    # Verify events were emitted in correct order
+    assert len(events_received) == 4
+    assert events_received[0][0] == "schema"
+    assert events_received[0][1]["operation"] == "register_entity_type"
+    assert events_received[1][0] == "type"
+    assert events_received[1][1]["operation"] == "register"
+    assert events_received[2][0] == "schema"
+    assert events_received[2][1]["operation"] == "register_relation_type"
+    assert events_received[3][0] == "type"
+    assert events_received[3][1]["operation"] == "register"
+
+@pytest.mark.asyncio
+async def test_complex_property_validation(graph_context):
+    """Test property validation with complex scenarios."""
+    # Register type with complex property definitions
+    await graph_context.register_entity_type(EntityType(
+        name="ComplexEntity",
+        properties={
+            "string_with_pattern": PropertyDefinition(
+                type=PropertyType.STRING,
+                required=True,
+                constraints={"pattern": r"^[A-Z][a-z]+$"}
+            ),
+            "bounded_integer": PropertyDefinition(
+                type=PropertyType.INTEGER,
+                required=True,
+                constraints={"min_value": 0, "max_value": 100}
+            ),
+            "enum_string": PropertyDefinition(
+                type=PropertyType.STRING,
+                required=True,
+                constraints={"allowed_values": ["red", "green", "blue"]}
+            ),
+            "default_value": PropertyDefinition(
+                type=PropertyType.STRING,
+                required=False,
+                default="default"
+            )
+        }
+    ))
+
+    # Test valid properties
+    entity_id = await graph_context.create_entity(
+        "ComplexEntity",
+        {
+            "string_with_pattern": "Hello",
+            "bounded_integer": 50,
+            "enum_string": "red"
+        }
+    )
+    entity = await graph_context.get_entity(entity_id)
+    assert entity["properties"]["default_value"] == "default"
+
+    # Test pattern validation
+    with pytest.raises(ValidationError, match="does not match pattern"):
+        await graph_context.create_entity(
+            "ComplexEntity",
+            {
+                "string_with_pattern": "invalid",  # Doesn't start with capital
+                "bounded_integer": 50,
+                "enum_string": "red"
+            }
+        )
+
+    # Test bounds validation
+    with pytest.raises(ValidationError, match="exceeds maximum value"):
+        await graph_context.create_entity(
+            "ComplexEntity",
+            {
+                "string_with_pattern": "Hello",
+                "bounded_integer": 101,  # Exceeds max
+                "enum_string": "red"
+            }
+        )
+
+    # Test enum validation
+    with pytest.raises(ValidationError, match="not in allowed values"):
+        await graph_context.create_entity(
+            "ComplexEntity",
+            {
+                "string_with_pattern": "Hello",
+                "bounded_integer": 50,
+                "enum_string": "yellow"  # Not in allowed values
+            }
+        )
+
+@pytest.mark.asyncio
+async def test_transaction_isolation(graph_context):
+    """Test transaction isolation and concurrent operation handling."""
+    # Create initial entity
+    entity_id = await graph_context.create_entity(
+        "Person",
+        {"name": "Initial Name"}
+    )
+
+    # Start transaction
+    await graph_context.begin_transaction()
+
+    # Update entity within transaction
+    await graph_context.update_entity(
+        entity_id,
+        {"name": "Updated Name"}
+    )
+
+    # Verify entity is updated within transaction
+    entity = await graph_context.get_entity(entity_id)
+    assert entity["properties"]["name"] == "Updated Name"
+
+    # Rollback transaction
+    await graph_context.rollback_transaction()
+
+    # Verify entity is restored to original state
+    entity = await graph_context.get_entity(entity_id)
+    assert entity["properties"]["name"] == "Initial Name"
+
+@pytest.mark.asyncio
+async def test_complex_schema_validation(graph_context):
+    """Test schema validation with complex type hierarchies."""
+    # Register base types
+    await graph_context.register_entity_type(EntityType(
+        name="BaseType",
+        properties={
+            "id": PropertyDefinition(type=PropertyType.STRING, required=True)
+        }
+    ))
+
+    # Register derived types
+    await graph_context.register_entity_type(EntityType(
+        name="DerivedType1",
+        properties={
+            "id": PropertyDefinition(type=PropertyType.STRING, required=True),
+            "derived1_prop": PropertyDefinition(type=PropertyType.STRING, required=True)
+        }
+    ))
+
+    await graph_context.register_entity_type(EntityType(
+        name="DerivedType2",
+        properties={
+            "id": PropertyDefinition(type=PropertyType.STRING, required=True),
+            "derived2_prop": PropertyDefinition(type=PropertyType.STRING, required=True)
+        }
+    ))
+
+    # Register relation type connecting different entity types
+    await graph_context.register_relation_type(RelationType(
+        name="complex_relation",
+        from_types=["BaseType", "DerivedType1"],
+        to_types=["DerivedType1", "DerivedType2"],
+        properties={
+            "relation_prop": PropertyDefinition(type=PropertyType.STRING, required=True)
+        }
+    ))
+
+    # Create test entities
+    base_id = await graph_context.create_entity(
+        "BaseType",
+        {"id": "base1"}
+    )
+
+    derived1_id = await graph_context.create_entity(
+        "DerivedType1",
+        {"id": "derived1", "derived1_prop": "prop1"}
+    )
+
+    derived2_id = await graph_context.create_entity(
+        "DerivedType2",
+        {"id": "derived2", "derived2_prop": "prop2"}
+    )
+
+    # Test valid relations
+    relation1_id = await graph_context.create_relation(
+        "complex_relation",
+        base_id,
+        derived1_id,
+        {"relation_prop": "valid"}
+    )
+    assert relation1_id is not None
+
+    relation2_id = await graph_context.create_relation(
+        "complex_relation",
+        derived1_id,
+        derived2_id,
+        {"relation_prop": "valid"}
+    )
+    assert relation2_id is not None
+
+    # Test invalid relation (wrong entity type)
+    with pytest.raises(SchemaError):
+        await graph_context.create_relation(
+            "complex_relation",
+            derived2_id,  # DerivedType2 not allowed as from_type
+            derived1_id,
+            {"relation_prop": "invalid"}
+        )
+
+@pytest.mark.asyncio
+async def test_cleanup_with_active_operations(graph_context):
+    """Test cleanup behavior with active operations."""
+    # Create some test data
+    entity_id = await graph_context.create_entity(
+        "Person",
+        {"name": "Test Person"}
+    )
+
+    # Start a transaction
+    await graph_context.begin_transaction()
+
+    # Create more data in transaction
+    await graph_context.create_entity(
+        "Person",
+        {"name": "Transaction Person"}
+    )
+
+    # Call cleanup
+    await graph_context.cleanup()
+
+    # Verify cleanup effects
+    assert not graph_context._in_transaction
+    assert len(graph_context._entity_types) == 0
+    assert len(graph_context._relation_types) == 0
+
+    # Verify all data is cleaned up
+    with pytest.raises(SchemaError):
+        await graph_context.create_entity(
+            "Person",
+            {"name": "New Person"}
+        )
+
+@pytest.mark.asyncio
+async def test_concurrent_transaction_operations(graph_context):
+    """Test handling of concurrent transaction operations."""
+    # Start a transaction
+    await graph_context.begin_transaction()
+
+    # Attempt to start another transaction (should fail)
+    with pytest.raises(TransactionError):
+        await graph_context.begin_transaction()
+
+    # Create entity in transaction
+    entity_id = await graph_context.create_entity(
+        "Person",
+        {"name": "Transaction Person"}
+    )
+
+    # Attempt to commit transaction
+    await graph_context.commit_transaction()
+
+    # Verify transaction is committed
+    assert not graph_context._in_transaction
+    entity = await graph_context.get_entity(entity_id)
+    assert entity is not None
+    assert entity["properties"]["name"] == "Transaction Person"
+
+    # Attempt operations without transaction
+    new_entity_id = await graph_context.create_entity(
+        "Person",
+        {"name": "Non-Transaction Person"}
+    )
+    assert new_entity_id is not None
+
+    # Verify both entities exist
+    entities = await graph_context.query({"type": "Person"})
+    assert len(entities) == 2

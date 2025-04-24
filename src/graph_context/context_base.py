@@ -4,7 +4,6 @@ Base implementation for the graph-context module.
 This module provides common functionality that can be used by specific graph
 context implementations.
 """
-from abc import abstractmethod
 from typing import Any
 
 from .exceptions import (
@@ -18,6 +17,7 @@ from .interface import GraphContext
 from .types.type_base import EntityType, RelationType, Entity, Relation, QuerySpec, TraversalSpec
 from .types.validators import validate_property_value
 from .event_system import EventSystem, GraphEvent
+from .store import GraphStoreFactory
 
 
 class BaseGraphContext(GraphContext):
@@ -25,72 +25,17 @@ class BaseGraphContext(GraphContext):
     Base implementation of the GraphContext interface.
 
     This class provides common functionality for validating entities and relations
-    against their schema definitions. Specific implementations should inherit from
-    this class and implement the abstract methods for their particular backend.
+    against their schema definitions, while delegating actual storage operations
+    to a configured GraphStore implementation.
     """
 
     def __init__(self) -> None:
         """Initialize the base graph context."""
+        self._store = GraphStoreFactory.create()
         self._entity_types: dict[str, EntityType] = {}
         self._relation_types: dict[str, RelationType] = {}
         self._in_transaction: bool = False
         self._events = EventSystem()
-
-    @abstractmethod
-    async def _get_entity_impl(self, entity_id: str) -> Entity | None:
-        """Implementation method to get an entity."""
-        pass
-
-    @abstractmethod
-    async def _create_entity_impl(self, entity_type: str, properties: dict[str, Any]) -> str:
-        """Implementation method to create an entity."""
-        pass
-
-    @abstractmethod
-    async def _update_entity_impl(self, entity_id: str, properties: dict[str, Any]) -> bool:
-        """Implementation method to update an entity."""
-        pass
-
-    @abstractmethod
-    async def _delete_entity_impl(self, entity_id: str) -> bool:
-        """Implementation method to delete an entity."""
-        pass
-
-    @abstractmethod
-    async def _get_relation_impl(self, relation_id: str) -> Relation | None:
-        """Implementation method to get a relation."""
-        pass
-
-    @abstractmethod
-    async def _create_relation_impl(
-        self,
-        relation_type: str,
-        from_entity: str,
-        to_entity: str,
-        properties: dict[str, Any]
-    ) -> str:
-        """Implementation method to create a relation."""
-        pass
-
-    @abstractmethod
-    async def _update_relation_impl(self, relation_id: str, properties: dict[str, Any]) -> bool:
-        """Implementation method to update a relation."""
-        pass
-
-    @abstractmethod
-    async def _delete_relation_impl(self, relation_id: str) -> bool:
-        """Implementation method to delete a relation."""
-        pass
-
-    @abstractmethod
-    async def _query_impl(self, query_spec: QuerySpec) -> list[Entity]:
-        """Implementation method to execute a query."""
-        pass
-
-    @abstractmethod
-    async def _traverse_impl(self, start_entity: str, traversal_spec: TraversalSpec) -> list[Entity]:
-        """Implementation method to execute a traversal."""
-        pass
 
     async def cleanup(self) -> None:
         """
@@ -98,10 +43,6 @@ class BaseGraphContext(GraphContext):
 
         This method should be called when the context is no longer needed.
         It cleans up internal state and type registries.
-
-        Note: Specific implementations should override this method to add
-        their own cleanup logic (e.g., closing connections, cleaning up
-        backend resources) while still calling super().cleanup().
 
         Raises:
             GraphContextError: If cleanup fails
@@ -199,49 +140,61 @@ class BaseGraphContext(GraphContext):
         Validate entity properties against the schema.
 
         Args:
-            entity_type: Type of the entity
+            entity_type: Type of entity to validate
             properties: Properties to validate
 
         Returns:
-            Dictionary of validated property values
+            Validated and potentially coerced properties
 
         Raises:
-            SchemaError: If the entity type is not defined in the schema
-            ValidationError: If property validation fails
+            ValidationError: If properties do not match schema
+            SchemaError: If entity type is not registered
         """
-        type_def = self._entity_types.get(entity_type)
-        if not type_def:
+        if entity_type not in self._entity_types:
             raise SchemaError(
                 f"Unknown entity type: {entity_type}",
                 schema_type=entity_type
             )
 
-        validated: dict[str, Any] = {}
-        for name, prop_def in type_def.properties.items():
-            if name in properties:
-                validated[name] = validate_property_value(
-                    properties[name],
+        type_def = self._entity_types[entity_type]
+        validated_props = {}
+
+        # Check required properties
+        for prop_name, prop_def in type_def.properties.items():
+            if prop_name not in properties:
+                if prop_def.required:
+                    raise ValidationError(
+                        f"Missing required property: {prop_name}",
+                        entity_type=entity_type,
+                        property=prop_name
+                    )
+                if prop_def.default is not None:
+                    validated_props[prop_name] = prop_def.default
+                continue
+
+            # Validate property value
+            try:
+                validated_props[prop_name] = validate_property_value(
+                    properties[prop_name],
                     prop_def
                 )
-            elif prop_def.required:
+            except ValidationError as e:
                 raise ValidationError(
-                    f"Required property missing: {name}",
-                    field=name,
-                    constraint="required"
-                )
-            elif prop_def.default is not None:
-                validated[name] = prop_def.default
+                    str(e),
+                    entity_type=entity_type,
+                    property=prop_name
+                ) from e
 
         # Check for unknown properties
-        unknown = set(properties.keys()) - set(type_def.properties.keys())
-        if unknown:
-            raise ValidationError(
-                f"Unknown properties: {', '.join(unknown)}",
-                field=next(iter(unknown)),
-                constraint="unknown"
-            )
+        for prop_name in properties:
+            if prop_name not in type_def.properties:
+                raise ValidationError(
+                    f"Unknown property: {prop_name}",
+                    entity_type=entity_type,
+                    property=prop_name
+                )
 
-        return validated
+        return validated_props
 
     def validate_relation(
         self,
@@ -251,254 +204,214 @@ class BaseGraphContext(GraphContext):
         properties: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """
-        Validate relation properties and entity types against the schema.
+        Validate relation properties and types against the schema.
 
         Args:
-            relation_type: Type of the relation
-            from_entity_type: Type of the source entity
-            to_entity_type: Type of the target entity
-            properties: Optional properties to validate
+            relation_type: Type of relation to validate
+            from_entity_type: Type of source entity
+            to_entity_type: Type of target entity
+            properties: Properties to validate (optional)
 
         Returns:
-            Dictionary of validated property values
+            Validated and potentially coerced properties
 
         Raises:
-            SchemaError: If the relation type is not defined in the schema or if
-                        the entity types are not compatible
-            ValidationError: If property validation fails
+            ValidationError: If properties do not match schema
+            SchemaError: If relation type is not registered
         """
-        type_def = self._relation_types.get(relation_type)
-        if not type_def:
+        if relation_type not in self._relation_types:
             raise SchemaError(
                 f"Unknown relation type: {relation_type}",
                 schema_type=relation_type
             )
 
+        type_def = self._relation_types[relation_type]
+
+        # Validate entity types
         if from_entity_type not in type_def.from_types:
-            raise SchemaError(
-                f"Invalid source entity type for relation {relation_type}: "
-                f"{from_entity_type}",
-                schema_type=relation_type,
-                field="from_types"
+            raise ValidationError(
+                f"Invalid from_entity_type: {from_entity_type}",
+                relation_type=relation_type,
+                field="from_entity_type"
             )
 
         if to_entity_type not in type_def.to_types:
-            raise SchemaError(
-                f"Invalid target entity type for relation {relation_type}: "
-                f"{to_entity_type}",
-                schema_type=relation_type,
-                field="to_types"
+            raise ValidationError(
+                f"Invalid to_entity_type: {to_entity_type}",
+                relation_type=relation_type,
+                field="to_entity_type"
             )
 
-        if not properties:
-            return {}
+        # Validate properties if provided
+        if properties is None:
+            properties = {}
 
-        validated: dict[str, Any] = {}
-        for name, prop_def in type_def.properties.items():
-            if name in properties:
-                validated[name] = validate_property_value(
-                    properties[name],
+        validated_props = {}
+
+        # Check required properties
+        for prop_name, prop_def in type_def.properties.items():
+            if prop_name not in properties:
+                if prop_def.required:
+                    raise ValidationError(
+                        f"Missing required property: {prop_name}",
+                        relation_type=relation_type,
+                        property=prop_name
+                    )
+                if prop_def.default is not None:
+                    validated_props[prop_name] = prop_def.default
+                continue
+
+            # Validate property value
+            try:
+                validated_props[prop_name] = validate_property_value(
+                    properties[prop_name],
                     prop_def
                 )
-            elif prop_def.required:
+            except ValidationError as e:
                 raise ValidationError(
-                    f"Required property missing: {name}",
-                    field=name,
-                    constraint="required"
-                )
-            elif prop_def.default is not None:
-                validated[name] = prop_def.default
+                    str(e),
+                    relation_type=relation_type,
+                    property=prop_name
+                ) from e
 
         # Check for unknown properties
-        unknown = set(properties.keys()) - set(type_def.properties.keys())
-        if unknown:
-            raise ValidationError(
-                f"Unknown properties: {', '.join(unknown)}",
-                field=next(iter(unknown)),
-                constraint="unknown"
-            )
+        for prop_name in properties:
+            if prop_name not in type_def.properties:
+                raise ValidationError(
+                    f"Unknown property: {prop_name}",
+                    relation_type=relation_type,
+                    property=prop_name
+                )
 
-        return validated
+        return validated_props
 
     def _check_transaction(self, required: bool = True) -> None:
         """
-        Check if a transaction is in progress.
+        Check transaction state.
 
         Args:
-            required: If True, raises an error if no transaction is in progress.
-                     If False, raises an error if a transaction is in progress.
+            required: Whether a transaction is required
 
         Raises:
-            TransactionError: If the transaction state is not as required
+            TransactionError: If transaction state does not match requirement
         """
         if required and not self._in_transaction:
-            raise TransactionError(
-                "No transaction in progress",
-                state="none"
-            )
+            raise TransactionError("Operation requires an active transaction")
         elif not required and self._in_transaction:
-            raise TransactionError(
-                "Transaction already in progress",
-                state="active"
-            )
+            raise TransactionError("Operation cannot be performed in a transaction")
 
     async def begin_transaction(self) -> None:
         """Begin a new transaction."""
         if self._in_transaction:
             raise TransactionError("Transaction already in progress")
+
+        await self._store.begin_transaction()
         self._in_transaction = True
-        await self._events.emit(
-            GraphEvent.TRANSACTION_BEGIN
-        )
+
+        await self._events.emit(GraphEvent.TRANSACTION_BEGIN)
 
     async def commit_transaction(self) -> None:
         """Commit the current transaction."""
         if not self._in_transaction:
             raise TransactionError("No transaction in progress")
+
+        await self._store.commit_transaction()
         self._in_transaction = False
-        await self._events.emit(
-            GraphEvent.TRANSACTION_COMMIT
-        )
+
+        await self._events.emit(GraphEvent.TRANSACTION_COMMIT)
 
     async def rollback_transaction(self) -> None:
         """Rollback the current transaction."""
         if not self._in_transaction:
             raise TransactionError("No transaction in progress")
+
+        await self._store.rollback_transaction()
         self._in_transaction = False
-        await self._events.emit(
-            GraphEvent.TRANSACTION_ROLLBACK
-        )
+
+        await self._events.emit(GraphEvent.TRANSACTION_ROLLBACK)
 
     async def get_entity(self, entity_id: str) -> Entity | None:
-        """
-        Retrieve an entity by ID.
+        """Get an entity by ID."""
+        entity = await self._store.get_entity(entity_id)
 
-        Args:
-            entity_id: ID of the entity to retrieve
-
-        Returns:
-            The entity if found, None otherwise
-
-        Raises:
-            GraphContextError: If the operation fails
-        """
-        result = await self._get_entity_impl(entity_id)
-        if result:
+        if entity:
             await self._events.emit(
                 GraphEvent.ENTITY_READ,
                 entity_id=entity_id,
-                entity_type=result.get('type'),
-                result=result
+                entity_type=entity.type
             )
-        return result
+
+        return entity
 
     async def create_entity(self, entity_type: str, properties: dict[str, Any]) -> str:
-        """
-        Create a new entity in the graph.
+        """Create a new entity."""
+        self._check_transaction()
+        validated_props = self.validate_entity(entity_type, properties)
 
-        Args:
-            entity_type: Type of the entity to create
-            properties: Dictionary of property values
+        entity_id = await self._store.create_entity(entity_type, validated_props)
 
-        Returns:
-            The ID of the created entity
-
-        Raises:
-            ValidationError: If property validation fails
-            SchemaError: If the entity type is not defined in the schema
-            GraphContextError: If the operation fails
-        """
-        validated = self.validate_entity(entity_type, properties)
-        entity_id = await self._create_entity_impl(entity_type, validated)
         await self._events.emit(
             GraphEvent.ENTITY_WRITE,
             entity_id=entity_id,
-            entity_type=entity_type,
-            properties=validated
+            entity_type=entity_type
         )
+
         return entity_id
 
     async def update_entity(self, entity_id: str, properties: dict[str, Any]) -> bool:
-        """
-        Update an existing entity.
+        """Update an existing entity."""
+        self._check_transaction()
 
-        Args:
-            entity_id: ID of the entity to update
-            properties: Dictionary of property values to update
-
-        Returns:
-            True if the entity was updated, False if not found
-
-        Raises:
-            ValidationError: If property validation fails
-            SchemaError: If the updated properties violate the schema
-            GraphContextError: If the operation fails
-        """
-        # Get existing entity to validate type
-        entity = await self._get_entity_impl(entity_id)
+        # Get current entity to validate type
+        entity = await self._store.get_entity(entity_id)
         if not entity:
-            return False
+            raise EntityNotFoundError(f"Entity not found: {entity_id}")
 
-        validated = self.validate_entity(entity['type'], properties)
-        success = await self._update_entity_impl(entity_id, validated)
+        validated_props = self.validate_entity(entity.type, properties)
+
+        success = await self._store.update_entity(entity_id, validated_props)
+
         if success:
             await self._events.emit(
                 GraphEvent.ENTITY_WRITE,
                 entity_id=entity_id,
-                entity_type=entity['type'],
-                properties=validated
+                entity_type=entity.type
             )
+
         return success
 
     async def delete_entity(self, entity_id: str) -> bool:
-        """
-        Delete an entity from the graph.
+        """Delete an entity."""
+        self._check_transaction()
 
-        Args:
-            entity_id: ID of the entity to delete
-
-        Returns:
-            True if the entity was deleted, False if not found
-
-        Raises:
-            GraphContextError: If the operation fails
-        """
-        # Get entity type before deletion for event
-        entity = await self._get_entity_impl(entity_id)
+        # Get current entity for event
+        entity = await self._store.get_entity(entity_id)
         if not entity:
             return False
 
-        success = await self._delete_entity_impl(entity_id)
+        success = await self._store.delete_entity(entity_id)
+
         if success:
             await self._events.emit(
                 GraphEvent.ENTITY_DELETE,
                 entity_id=entity_id,
-                entity_type=entity['type']
+                entity_type=entity.type
             )
+
         return success
 
     async def get_relation(self, relation_id: str) -> Relation | None:
-        """
-        Retrieve a relation by ID.
+        """Get a relation by ID."""
+        relation = await self._store.get_relation(relation_id)
 
-        Args:
-            relation_id: ID of the relation to retrieve
-
-        Returns:
-            The relation if found, None otherwise
-
-        Raises:
-            GraphContextError: If the operation fails
-        """
-        result = await self._get_relation_impl(relation_id)
-        if result:
+        if relation:
             await self._events.emit(
                 GraphEvent.RELATION_READ,
                 relation_id=relation_id,
-                relation_type=result.get('type'),
-                result=result
+                relation_type=relation.type
             )
-        return result
+
+        return relation
 
     async def create_relation(
         self,
@@ -507,42 +420,30 @@ class BaseGraphContext(GraphContext):
         to_entity: str,
         properties: dict[str, Any] | None = None
     ) -> str:
-        """
-        Create a new relation between entities.
+        """Create a new relation."""
+        self._check_transaction()
 
-        Args:
-            relation_type: Type of the relation to create
-            from_entity: ID of the source entity
-            to_entity: ID of the target entity
-            properties: Optional dictionary of property values
-
-        Returns:
-            The ID of the created relation
-
-        Raises:
-            ValidationError: If property validation fails
-            SchemaError: If the relation type is not defined in the schema
-            EntityNotFoundError: If either entity does not exist
-            GraphContextError: If the operation fails
-        """
         # Get entity types for validation
-        from_entity_obj = await self._get_entity_impl(from_entity)
-        to_entity_obj = await self._get_entity_impl(to_entity)
-        if not from_entity_obj or not to_entity_obj:
-            raise EntityNotFoundError("Source or target entity not found")
+        from_entity_obj = await self._store.get_entity(from_entity)
+        if not from_entity_obj:
+            raise EntityNotFoundError(f"From entity not found: {from_entity}")
 
-        validated = self.validate_relation(
+        to_entity_obj = await self._store.get_entity(to_entity)
+        if not to_entity_obj:
+            raise EntityNotFoundError(f"To entity not found: {to_entity}")
+
+        validated_props = self.validate_relation(
             relation_type,
-            from_entity_obj['type'],
-            to_entity_obj['type'],
+            from_entity_obj.type,
+            to_entity_obj.type,
             properties or {}
         )
 
-        relation_id = await self._create_relation_impl(
+        relation_id = await self._store.create_relation(
             relation_type,
             from_entity,
             to_entity,
-            validated
+            validated_props
         )
 
         await self._events.emit(
@@ -550,9 +451,9 @@ class BaseGraphContext(GraphContext):
             relation_id=relation_id,
             relation_type=relation_type,
             from_entity=from_entity,
-            to_entity=to_entity,
-            properties=validated
+            to_entity=to_entity
         )
+
         return relation_id
 
     async def update_relation(
@@ -560,88 +461,70 @@ class BaseGraphContext(GraphContext):
         relation_id: str,
         properties: dict[str, Any]
     ) -> bool:
-        """
-        Update an existing relation.
+        """Update an existing relation."""
+        self._check_transaction()
 
-        Args:
-            relation_id: ID of the relation to update
-            properties: Dictionary of property values to update
-
-        Returns:
-            True if the relation was updated, False if not found
-
-        Raises:
-            ValidationError: If property validation fails
-            SchemaError: If the updated properties violate the schema
-            GraphContextError: If the operation fails
-        """
-        relation = await self._get_relation_impl(relation_id)
+        # Get current relation to validate type
+        relation = await self._store.get_relation(relation_id)
         if not relation:
             return False
 
-        validated = self.validate_relation(
-            relation['type'],
-            relation['from_type'],
-            relation['to_type'],
+        # Get entity types for validation
+        from_entity = await self._store.get_entity(relation.from_entity)
+        if not from_entity:
+            raise EntityNotFoundError(f"From entity not found: {relation.from_entity}")
+
+        to_entity = await self._store.get_entity(relation.to_entity)
+        if not to_entity:
+            raise EntityNotFoundError(f"To entity not found: {relation.to_entity}")
+
+        validated_props = self.validate_relation(
+            relation.type,
+            from_entity.type,
+            to_entity.type,
             properties
         )
 
-        success = await self._update_relation_impl(relation_id, validated)
+        success = await self._store.update_relation(relation_id, validated_props)
+
         if success:
             await self._events.emit(
                 GraphEvent.RELATION_WRITE,
                 relation_id=relation_id,
-                relation_type=relation['type'],
-                properties=validated
+                relation_type=relation.type
             )
+
         return success
 
     async def delete_relation(self, relation_id: str) -> bool:
-        """
-        Delete a relation from the graph.
+        """Delete a relation."""
+        self._check_transaction()
 
-        Args:
-            relation_id: ID of the relation to delete
-
-        Returns:
-            True if the relation was deleted, False if not found
-
-        Raises:
-            GraphContextError: If the operation fails
-        """
-        relation = await self._get_relation_impl(relation_id)
+        # Get current relation for event
+        relation = await self._store.get_relation(relation_id)
         if not relation:
             return False
 
-        success = await self._delete_relation_impl(relation_id)
+        success = await self._store.delete_relation(relation_id)
+
         if success:
             await self._events.emit(
                 GraphEvent.RELATION_DELETE,
                 relation_id=relation_id,
-                relation_type=relation['type']
+                relation_type=relation.type
             )
+
         return success
 
     async def query(self, query_spec: QuerySpec) -> list[Entity]:
-        """
-        Execute a query against the graph.
+        """Execute a query against the graph."""
+        results = await self._store.query(query_spec)
 
-        Args:
-            query_spec: Specification of the query to execute
-
-        Returns:
-            List of entities matching the query
-
-        Raises:
-            ValidationError: If the query specification is invalid
-            GraphContextError: If the operation fails
-        """
-        results = await self._query_impl(query_spec)
         await self._events.emit(
             GraphEvent.QUERY_EXECUTED,
-            query_spec=query_spec,
-            results=results
+            query_spec=query_spec
         )
+
         return results
 
     async def traverse(
@@ -649,26 +532,13 @@ class BaseGraphContext(GraphContext):
         start_entity: str,
         traversal_spec: TraversalSpec
     ) -> list[Entity]:
-        """
-        Traverse the graph starting from a given entity.
+        """Traverse the graph starting from a given entity."""
+        results = await self._store.traverse(start_entity, traversal_spec)
 
-        Args:
-            start_entity: ID of the entity to start traversal from
-            traversal_spec: Specification of the traversal
-
-        Returns:
-            List of entities found during traversal
-
-        Raises:
-            EntityNotFoundError: If the start entity does not exist
-            ValidationError: If the traversal specification is invalid
-            GraphContextError: If the operation fails
-        """
-        results = await self._traverse_impl(start_entity, traversal_spec)
         await self._events.emit(
             GraphEvent.TRAVERSAL_EXECUTED,
             start_entity=start_entity,
-            traversal_spec=traversal_spec,
-            results=results
+            traversal_spec=traversal_spec
         )
+
         return results
