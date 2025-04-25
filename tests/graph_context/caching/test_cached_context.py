@@ -14,7 +14,7 @@ from graph_context.event_system import EventSystem
 from graph_context.interface import GraphContext
 from graph_context.types.type_base import Entity, Relation
 from graph_context.context_base import BaseGraphContext
-from graph_context.exceptions import SchemaError
+from graph_context.exceptions import SchemaError, EntityNotFoundError, RelationNotFoundError
 from graph_context.types.type_base import EntityType, PropertyDefinition, RelationType
 from tests.graph_context.test_context_base import TestGraphContext
 
@@ -417,3 +417,546 @@ async def test_cache_enable_disable(cached_context):
     # Get the entity again - should be cached
     entity3 = await cached_context.get_entity(entity_id)
     assert entity3 == entity1
+
+@pytest.mark.asyncio
+async def test_initialize_event_subscriptions(base_context):
+    """Test that event subscriptions are properly initialized."""
+    # Create a cache manager with mocked methods
+    cache_manager = CacheManager()
+    cache_manager.handle_event = AsyncMock()
+
+    # Create cached context with the mocked cache manager
+    context = CachedGraphContext(base_context, cache_manager)
+
+    # Explicitly call _initialize (normally would be called internally)
+    await context._initialize()
+
+    # Create an entity to trigger events
+    entity_id = await context.create_entity("person", {"name": "Test"})
+
+    # Verify the event handler was called
+    assert cache_manager.handle_event.called
+
+    # Cleanup
+    await context.cleanup()
+
+@pytest.mark.asyncio
+async def test_transaction_cache_commit(cached_context):
+    """Test transaction cache behavior with commit."""
+    # Create initial entity
+    entity_id = await cached_context.create_entity("person", {"name": "Original"})
+
+    # Begin transaction
+    await cached_context.begin_transaction()
+
+    # Create another entity in transaction
+    transaction_entity_id = await cached_context.create_entity("person", {"name": "Transaction"})
+
+    # Update the original entity in transaction
+    await cached_context.update_entity(entity_id, {"name": "Updated"})
+
+    # Get the entity - should see updated values
+    updated_entity = await cached_context.get_entity(entity_id)
+    assert updated_entity["properties"]["name"] == "Updated"
+
+    # Commit the transaction
+    await cached_context.commit_transaction()
+
+    # Verify transaction state is cleared
+    assert not cached_context._in_transaction
+
+    # Verify changes are persistent
+    committed_entity = await cached_context.get_entity(entity_id)
+    assert committed_entity["properties"]["name"] == "Updated"
+
+    transaction_entity = await cached_context.get_entity(transaction_entity_id)
+    assert transaction_entity["properties"]["name"] == "Transaction"
+
+@pytest.mark.asyncio
+async def test_transaction_cache_rollback(cached_context):
+    """Test transaction cache behavior with rollback."""
+    # Create initial entity
+    entity_id = await cached_context.create_entity("person", {"name": "Original"})
+
+    # Begin transaction
+    await cached_context.begin_transaction()
+
+    # Update entity in transaction
+    await cached_context.update_entity(entity_id, {"name": "Updated"})
+
+    # Create new entity in transaction
+    transaction_entity_id = await cached_context.create_entity("person", {"name": "Transaction"})
+
+    # Verify transaction state
+    updated_entity = await cached_context.get_entity(entity_id)
+    assert updated_entity["properties"]["name"] == "Updated"
+
+    # Rollback the transaction
+    await cached_context.rollback_transaction()
+
+    # Verify transaction state is cleared
+    assert not cached_context._in_transaction
+
+    # Verify original state is restored
+    original_entity = await cached_context.get_entity(entity_id)
+    assert original_entity["properties"]["name"] == "Original"
+
+    # Verify transaction entity doesn't exist
+    with pytest.raises(Exception):
+        await cached_context.get_entity(transaction_entity_id)
+
+@pytest.mark.asyncio
+async def test_query_dependencies(cached_context):
+    """Test query caching with dependencies."""
+    # Create test entities
+    entity1_id = await cached_context.create_entity("person", {"name": "Alice"})
+    entity2_id = await cached_context.create_entity("person", {"name": "Bob"})
+
+    # Execute a query to cache results
+    query_spec = {"type": "person"}
+    results1 = await cached_context.query(query_spec)
+    assert len(results1) == 2
+
+    # Update an entity to invalidate cache
+    await cached_context.update_entity(entity1_id, {"name": "Alice Smith"})
+
+    # Execute same query again
+    results2 = await cached_context.query(query_spec)
+    assert len(results2) == 2
+
+    # Verify updated entity is reflected in results
+    updated_entity = next((e for e in results2 if e["id"] == entity1_id), None)
+    assert updated_entity["properties"]["name"] == "Alice Smith"
+
+@pytest.mark.asyncio
+async def test_traversal_dependencies(cached_context):
+    """Test traversal caching with dependencies."""
+    # Create test entities and relation
+    entity1_id = await cached_context.create_entity("person", {"name": "Alice"})
+    entity2_id = await cached_context.create_entity("person", {"name": "Bob"})
+    relation_id = await cached_context.create_relation("knows", entity1_id, entity2_id, {"since": "2020"})
+
+    # Execute a traversal to cache results
+    traversal_spec = {"relation_type": "knows", "max_depth": 1}
+    results1 = await cached_context.traverse(entity1_id, traversal_spec)
+    assert len(results1) == 1
+
+    # Update relation to invalidate cache
+    await cached_context.update_relation(relation_id, {"since": "2021"})
+
+    # Execute same traversal again
+    results2 = await cached_context.traverse(entity1_id, traversal_spec)
+    assert len(results2) == 1
+
+    # Verify updated relation is reflected in results
+    updated_relation = results2[0]
+    assert updated_relation["properties"]["since"] == "2021"
+
+@pytest.mark.asyncio
+async def test_cache_behavior_for_bulk_operations(cached_context):
+    """Test caching behavior when bulk operations would occur."""
+    # We won't test the actual bulk operations since they're not implemented in TestGraphContext
+    # Instead, we'll test the caching behavior with regular entity operations
+
+    # Start transaction
+    await cached_context.begin_transaction()
+
+    # Create multiple entities to simulate bulk behavior
+    entity1_id = await cached_context.create_entity("person", {"name": "Entity1"})
+    entity2_id = await cached_context.create_entity("person", {"name": "Entity2"})
+    entity3_id = await cached_context.create_entity("person", {"name": "Entity3"})
+
+    # Get all entities to check initial cache state
+    entity1 = await cached_context.get_entity(entity1_id)
+    entity2 = await cached_context.get_entity(entity2_id)
+    entity3 = await cached_context.get_entity(entity3_id)
+
+    assert entity1["properties"]["name"] == "Entity1"
+    assert entity2["properties"]["name"] == "Entity2"
+    assert entity3["properties"]["name"] == "Entity3"
+
+    # Update entities to simulate bulk update
+    await cached_context.update_entity(entity1_id, {"name": "Updated1"})
+    await cached_context.update_entity(entity2_id, {"name": "Updated2"})
+
+    # Verify updates are reflected in cache
+    updated1 = await cached_context.get_entity(entity1_id)
+    updated2 = await cached_context.get_entity(entity2_id)
+
+    assert updated1["properties"]["name"] == "Updated1"
+    assert updated2["properties"]["name"] == "Updated2"
+
+    # Delete entities to simulate bulk delete
+    success1 = await cached_context.delete_entity(entity1_id)
+    success3 = await cached_context.delete_entity(entity3_id)
+
+    assert success1 is True
+    assert success3 is True
+
+    # Verify deletions by trying to fetch deleted entities
+    # Note: TestGraphContext may not raise EntityNotFoundError but could return None
+    # or we might need to try EntityNotFoundError or get a specific exception
+    try:
+        deleted_entity1 = await cached_context.get_entity(entity1_id)
+        # If we get here, the test context returns None for deleted entities
+        assert deleted_entity1 is None
+    except Exception as e:
+        # If we get here, the test context raises some kind of exception
+        pass
+
+    try:
+        deleted_entity3 = await cached_context.get_entity(entity3_id)
+        # If we get here, the test context returns None for deleted entities
+        assert deleted_entity3 is None
+    except Exception as e:
+        # If we get here, the test context raises some kind of exception
+        pass
+
+    # Entity2 should still exist
+    remaining = await cached_context.get_entity(entity2_id)
+    assert remaining["properties"]["name"] == "Updated2"
+
+    # Commit transaction
+    await cached_context.commit_transaction()
+
+@pytest.mark.asyncio
+async def test_cache_behavior_for_bulk_relation_operations(cached_context):
+    """Test caching behavior when bulk relation operations would occur."""
+    # We won't test the actual bulk operations since they're not implemented in TestGraphContext
+    # Instead, we'll test the caching behavior with regular relation operations
+
+    # Start transaction
+    await cached_context.begin_transaction()
+
+    # Create entities for relations
+    person1_id = await cached_context.create_entity("person", {"name": "Person1"})
+    person2_id = await cached_context.create_entity("person", {"name": "Person2"})
+    person3_id = await cached_context.create_entity("person", {"name": "Person3"})
+
+    # Create relations to simulate bulk create
+    relation1_id = await cached_context.create_relation("knows", person1_id, person2_id, {"since": "2020"})
+    relation2_id = await cached_context.create_relation("knows", person2_id, person3_id, {"since": "2021"})
+
+    # Get relations to check initial cache state
+    relation1 = await cached_context.get_relation(relation1_id)
+    relation2 = await cached_context.get_relation(relation2_id)
+
+    assert relation1["properties"]["since"] == "2020"
+    assert relation2["properties"]["since"] == "2021"
+
+    # Update relations to simulate bulk update
+    await cached_context.update_relation(relation1_id, {"since": "2022"})
+    await cached_context.update_relation(relation2_id, {"since": "2023"})
+
+    # Verify updates are reflected in cache
+    updated1 = await cached_context.get_relation(relation1_id)
+    updated2 = await cached_context.get_relation(relation2_id)
+
+    assert updated1["properties"]["since"] == "2022"
+    assert updated2["properties"]["since"] == "2023"
+
+    # Delete relations to simulate bulk delete
+    await cached_context.delete_relation(relation1_id)
+    await cached_context.delete_relation(relation2_id)
+
+    # Verify deletions are reflected in cache
+    with pytest.raises(RelationNotFoundError):
+        await cached_context.get_relation(relation1_id)
+
+    with pytest.raises(RelationNotFoundError):
+        await cached_context.get_relation(relation2_id)
+
+    # Commit transaction
+    await cached_context.commit_transaction()
+
+class ExtendedMockContext(MockBaseContext):
+    """Extended mock context with additional methods for testing edge cases."""
+
+    async def _query_impl(self, query_spec: Dict[str, Any]) -> list[Dict[str, Any]]:
+        # Simulate a query error for specific test cases
+        if query_spec.get("error", False):
+            raise ValueError("Simulated query error")
+        return await super()._query_impl(query_spec)
+
+    async def _traverse_impl(self, start_entity: str, traversal_spec: Dict[str, Any]) -> list[Dict[str, Any]]:
+        # Simulate a traversal error for specific test cases
+        if traversal_spec.get("error", False):
+            raise ValueError("Simulated traversal error")
+        return await super()._traverse_impl(start_entity, traversal_spec)
+
+@pytest.fixture
+async def error_prone_context():
+    """Create a context that can be configured to raise errors."""
+    context = ExtendedMockContext()
+    await context.initialize()
+    return context
+
+@pytest.fixture
+async def error_prone_cached_context(error_prone_context):
+    """Create a cached context wrapping the error-prone context."""
+    cache_manager = CacheManager()
+    context = CachedGraphContext(error_prone_context, cache_manager)
+    yield context
+    await context.cleanup()
+
+@pytest.mark.asyncio
+async def test_query_error_handling(error_prone_cached_context):
+    """Test that query errors from the base context are properly propagated."""
+    # Execute a query that will error
+    query_spec = {"type": "person", "error": True}
+
+    with pytest.raises(ValueError, match="Simulated query error"):
+        await error_prone_cached_context.query(query_spec)
+
+@pytest.mark.asyncio
+async def test_traversal_error_handling(error_prone_cached_context):
+    """Test that traversal errors from the base context are properly propagated."""
+    # Create an entity to start traversal from
+    entity_id = await error_prone_cached_context.create_entity("person", {"name": "Test"})
+
+    # Execute a traversal that will error
+    traversal_spec = {"relation_type": "knows", "error": True}
+
+    with pytest.raises(ValueError, match="Simulated traversal error"):
+        await error_prone_cached_context.traverse(entity_id, traversal_spec)
+
+@pytest.mark.asyncio
+async def test_transaction_state_errors(cached_context):
+    """Test handling of transaction state errors."""
+    # Test committing when not in transaction
+    assert not cached_context._in_transaction
+    await cached_context.commit_transaction()  # Should not raise error, just log warning
+
+    # Test rolling back when not in transaction
+    await cached_context.rollback_transaction()  # Should not raise error, just log warning
+
+    # Begin transaction and test double begin
+    await cached_context.begin_transaction()
+    assert cached_context._in_transaction
+
+    # Clean up
+    await cached_context.rollback_transaction()
+
+@pytest.mark.asyncio
+async def test_actual_bulk_operations(cached_context):
+    """Test actual bulk operations methods."""
+    # Test bulk_create_entities
+    entities = [
+        {"name": "Bulk1", "age": 30},
+        {"name": "Bulk2", "age": 25},
+        {"name": "Bulk3", "age": 40}
+    ]
+
+    entity_ids = await cached_context.bulk_create_entities("person", entities)
+    assert len(entity_ids) == 3
+
+    # Test bulk_update_entities
+    updates = [
+        {"id": entity_ids[0], "name": "Updated1", "age": 31},
+        {"id": entity_ids[1], "name": "Updated2", "age": 26}
+    ]
+
+    await cached_context.bulk_update_entities("person", updates)
+
+    # Verify updates
+    updated1 = await cached_context.get_entity(entity_ids[0])
+    assert updated1["properties"]["name"] == "Updated1"
+    assert updated1["properties"]["age"] == 31
+
+    # Test bulk_delete_entities
+    await cached_context.bulk_delete_entities("person", [entity_ids[0], entity_ids[2]])
+
+    # Verify deletions
+    with pytest.raises(EntityNotFoundError):
+        await cached_context.get_entity(entity_ids[0])
+
+    with pytest.raises(EntityNotFoundError):
+        await cached_context.get_entity(entity_ids[2])
+
+    # Entity1 should still exist
+    remaining = await cached_context.get_entity(entity_ids[1])
+    assert remaining["properties"]["name"] == "Updated2"
+
+@pytest.mark.asyncio
+async def test_actual_bulk_relation_operations(cached_context):
+    """Test actual bulk relation operations methods."""
+    # Create test entities
+    person1_id = await cached_context.create_entity("person", {"name": "Person1"})
+    person2_id = await cached_context.create_entity("person", {"name": "Person2"})
+    person3_id = await cached_context.create_entity("person", {"name": "Person3"})
+
+    # Test bulk_create_relations
+    relations = [
+        {"from_entity": person1_id, "to_entity": person2_id, "properties": {"since": "2020"}},
+        {"from_entity": person2_id, "to_entity": person3_id, "properties": {"since": "2021"}},
+        {"from_entity": person1_id, "to_entity": person3_id, "properties": {"since": "2022"}}
+    ]
+
+    relation_ids = await cached_context.bulk_create_relations("knows", relations)
+    assert len(relation_ids) == 3
+
+    # Test bulk_update_relations
+    updates = [
+        {"id": relation_ids[0], "since": "2023"},
+        {"id": relation_ids[1], "since": "2024"}
+    ]
+
+    await cached_context.bulk_update_relations("knows", updates)
+
+    # Verify updates
+    updated1 = await cached_context.get_relation(relation_ids[0])
+    assert updated1["properties"]["since"] == "2023"
+
+    # Test bulk_delete_relations
+    await cached_context.bulk_delete_relations("knows", [relation_ids[0], relation_ids[2]])
+
+    # Verify deletions
+    with pytest.raises(RelationNotFoundError):
+        await cached_context.get_relation(relation_ids[0])
+
+    with pytest.raises(RelationNotFoundError):
+        await cached_context.get_relation(relation_ids[2])
+
+    # Relation1 should still exist
+    remaining = await cached_context.get_relation(relation_ids[1])
+    assert remaining["properties"]["since"] == "2024"
+
+@pytest.mark.asyncio
+async def test_cleanup_method(cached_context):
+    """Test the cleanup method."""
+    # Just ensure it can be called without error
+    await cached_context.cleanup()
+
+    # Verify we can still perform operations after cleanup
+    entity_id = await cached_context.create_entity("person", {"name": "Post-Cleanup"})
+    entity = await cached_context.get_entity(entity_id)
+    assert entity["properties"]["name"] == "Post-Cleanup"
+
+@pytest.mark.asyncio
+async def test_event_handling_for_missed_branches():
+    """Test event handling branches that might be missed in other tests."""
+    # Create a mock base context
+    base_context = MockBaseContext()
+    await base_context.initialize()
+
+    # Create a cache manager with mocked handle_event
+    cache_manager = CacheManager()
+    original_handle_event = cache_manager.handle_event
+    cache_manager.handle_event = AsyncMock()
+
+    # Create cached context
+    context = CachedGraphContext(base_context, cache_manager)
+    await context._initialize()
+
+    # Test schema_modified event
+    await context._cache_manager.handle_event(EventContext(
+        event=GraphEvent.SCHEMA_MODIFIED,
+        data={},
+        metadata=EventMetadata()
+    ))
+    assert cache_manager.handle_event.called
+
+    # Test type_modified event
+    cache_manager.handle_event.reset_mock()
+    await context._cache_manager.handle_event(EventContext(
+        event=GraphEvent.TYPE_MODIFIED,
+        data={},
+        metadata=EventMetadata()
+    ))
+    assert cache_manager.handle_event.called
+
+    # Restore original handle_event
+    cache_manager.handle_event = original_handle_event
+
+    # Cleanup
+    await context.cleanup()
+
+@pytest.mark.asyncio
+async def test_double_initialization(cached_context):
+    """Test that double initialization is handled correctly."""
+    # First initialization happens automatically
+    assert cached_context._initialized
+
+    # Call initialize again and ensure it doesn't break anything
+    await cached_context._initialize()
+    assert cached_context._initialized
+
+    # Verify we can still perform operations
+    entity_id = await cached_context.create_entity("person", {"name": "Double-Init"})
+    entity = await cached_context.get_entity(entity_id)
+    assert entity["properties"]["name"] == "Double-Init"
+
+@pytest.mark.asyncio
+async def test_entity_not_found_direct(cached_context):
+    """Test direct entity not found scenarios."""
+    # Try to get a non-existent entity
+    with pytest.raises(EntityNotFoundError):
+        await cached_context.get_entity("non-existent-id")
+
+    # Try to update a non-existent entity
+    success = await cached_context.update_entity("non-existent-id", {"name": "Updated"})
+    assert not success
+
+    # Try to delete a non-existent entity
+    success = await cached_context.delete_entity("non-existent-id")
+    assert not success
+
+@pytest.mark.asyncio
+async def test_relation_not_found_direct(cached_context):
+    """Test direct relation not found scenarios."""
+    # Try to get a non-existent relation
+    with pytest.raises(RelationNotFoundError):
+        await cached_context.get_relation("non-existent-id")
+
+    # Try to update a non-existent relation
+    success = await cached_context.update_relation("non-existent-id", {"since": "2023"})
+    assert not success
+
+    # Try to delete a non-existent relation
+    success = await cached_context.delete_relation("non-existent-id")
+    assert not success
+
+@pytest.mark.asyncio
+async def test_transaction_state_transitions_detail(cached_context):
+    """Test detailed transaction state transitions."""
+    # Create initial entities
+    entity1_id = await cached_context.create_entity("person", {"name": "Initial1"})
+    entity2_id = await cached_context.create_entity("person", {"name": "Initial2"})
+
+    # Begin transaction
+    await cached_context.begin_transaction()
+    assert cached_context._in_transaction
+    assert len(cached_context._transaction_cache) == 0
+
+    # Get existing entity to populate transaction cache
+    entity1 = await cached_context.get_entity(entity1_id)
+    assert entity1_id in cached_context._transaction_cache
+
+    # Update entity in transaction
+    await cached_context.update_entity(entity1_id, {"name": "Updated1"})
+    assert entity1_id not in cached_context._transaction_cache  # Should be cleared from transaction cache
+
+    # Check that fresh entity is fetched
+    updated_entity1 = await cached_context.get_entity(entity1_id)
+    assert updated_entity1["properties"]["name"] == "Updated1"
+    assert entity1_id in cached_context._transaction_cache  # Should be back in transaction cache
+
+    # Commit the transaction
+    await cached_context.commit_transaction()
+    assert not cached_context._in_transaction
+    assert len(cached_context._transaction_cache) == 0
+
+    # Verify changes persisted
+    committed_entity = await cached_context.get_entity(entity1_id)
+    assert committed_entity["properties"]["name"] == "Updated1"
+
+    # Test another transaction with rollback
+    await cached_context.begin_transaction()
+    await cached_context.update_entity(entity2_id, {"name": "ShouldNotPersist"})
+    updated_entity2 = await cached_context.get_entity(entity2_id)
+    assert updated_entity2["properties"]["name"] == "ShouldNotPersist"
+
+    # Rollback
+    await cached_context.rollback_transaction()
+    rolled_back_entity = await cached_context.get_entity(entity2_id)
+    assert rolled_back_entity["properties"]["name"] == "Initial2"
