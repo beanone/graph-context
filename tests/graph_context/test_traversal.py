@@ -485,3 +485,123 @@ async def test_self_referential_relation(cyclic_graph):
     assert "A->B->C" in paths_found
     # Path A->B->C->A should be prevented by cycle detection
     assert "A->B->C->A" not in paths_found
+
+
+def test_should_skip_node():
+    """Test the _should_skip_node method of TraversalStrategy."""
+    strategy = BreadthFirstTraversal()
+    visited = set()
+    path_counts = {}
+    current_path = []
+
+    # Create test entities and relations
+    entity1 = Entity(
+        id="1",
+        type="test",
+        properties={},
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC)
+    )
+    entity2 = Entity(
+        id="2",
+        type="test",
+        properties={},
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC)
+    )
+    relation = Relation(
+        id="r1",
+        type="test",
+        from_entity="1",
+        to_entity="2",
+        properties={},
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC)
+    )
+
+    # Test 1: Non-path traversal with visited node
+    spec = TraversalSpec(return_paths=False)
+    visited.add("2")
+    assert strategy._should_skip_node("2", visited, path_counts, current_path, spec)
+    visited.remove("2")
+    assert not strategy._should_skip_node("2", visited, path_counts, current_path, spec)
+
+    # Test 2: Path traversal with node in current path (cycle detection)
+    spec = TraversalSpec(return_paths=True)
+    current_path = [(relation, entity2)]  # Node "2" is in current path
+    assert strategy._should_skip_node("2", visited, path_counts, current_path, spec)
+    current_path = []  # Empty path
+    assert not strategy._should_skip_node("2", visited, path_counts, current_path, spec)
+
+    # Test 3: Max paths per node exceeded
+    spec = TraversalSpec(return_paths=True, max_paths_per_node=2)
+    path_counts["2"] = 2  # Node has reached max paths
+    assert strategy._should_skip_node("2", visited, path_counts, current_path, spec)
+    path_counts["2"] = 1  # Node has not reached max paths
+    assert not strategy._should_skip_node("2", visited, path_counts, current_path, spec)
+
+    # Test 4: Multiple conditions together
+    spec = TraversalSpec(return_paths=True, max_paths_per_node=2)
+    visited.add("2")
+    path_counts["2"] = 2
+    current_path = [(relation, entity2)]
+    assert strategy._should_skip_node("2", visited, path_counts, current_path, spec)
+
+
+@pytest.mark.asyncio
+async def test_dfs_multiple_skip_conditions():
+    """Test DFS traversal with multiple skip conditions."""
+    # Create a graph with a structure that would trigger multiple skip conditions
+    graph = MockGraph()
+
+    # Create a graph with multiple paths to the same nodes
+    # A -> B -> C
+    # |    ^    ^
+    # |    |    |
+    # + -> D -> E
+
+    # Add entities
+    for id in ["A", "B", "C", "D", "E"]:
+        graph.add_entity(id, "test")
+
+    # Add relations to create multiple paths
+    graph.add_relation("r1", "test", "A", "B")  # A->B
+    graph.add_relation("r2", "test", "B", "C")  # B->C
+    graph.add_relation("r3", "test", "A", "D")  # A->D
+    graph.add_relation("r4", "test", "D", "B")  # D->B
+    graph.add_relation("r5", "test", "D", "E")  # D->E
+    graph.add_relation("r6", "test", "E", "C")  # E->C
+
+    # Test DFS traversal with conditions that would trigger multiple skip checks:
+    # - return_paths=True (for cycle detection)
+    # - max_paths_per_node=1 (to limit paths)
+    spec = {
+        "direction": "outbound",
+        "return_paths": True,
+        "max_paths_per_node": 1  # This will force path skipping
+    }
+
+    results = await traverse(graph, "A", spec, strategy="dfs")
+
+    # Verify results
+    # 1. Each node should appear at most once (due to max_paths_per_node=1)
+    node_counts = {}
+    for result in results:
+        node_id = result.entity.id
+        node_counts[node_id] = node_counts.get(node_id, 0) + 1
+        assert node_counts[node_id] == 1, f"Node {node_id} appears more than once"
+
+    # 2. No cycles should be present in any path
+    for result in results:
+        path_nodes = {step[1].id for step in result.path}
+        assert len(path_nodes) == len(result.path), f"Cycle detected in path to {result.entity.id}"
+
+    # 3. All paths should be valid
+    for result in results:
+        if result.path:  # Skip start node if included
+            # Each step in path should be connected to previous
+            for i in range(len(result.path)):
+                if i > 0:
+                    prev_node = result.path[i-1][1].id
+                    curr_relation = result.path[i][0]
+                    assert curr_relation.from_entity == prev_node, f"Invalid path: {result.path}"

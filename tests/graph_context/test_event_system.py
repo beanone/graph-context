@@ -533,23 +533,129 @@ class TestEventSystem:
     ):
         """Test bulk operation events with relations."""
         await event_system.subscribe(GraphEvent.RELATION_BULK_WRITE, handler)
-
-        # Create test relations
         relations = [
-            {"id": str(i), "type": "knows", "from": "1", "to": str(i+1)}
-            for i in range(3)
+            {"id": "1", "type": "KNOWS", "from": "a", "to": "b"},
+            {"id": "2", "type": "WORKS_AT", "from": "c", "to": "d"}
         ]
-
-        # Test with relations instead of entities
         await event_system.emit(
             GraphEvent.RELATION_BULK_WRITE,
             relations=relations,
-            relation_type="knows"
+            relation_type="MIXED"
         )
 
         assert len(received_events) == 1
-        event = received_events[0]
-        assert event.event == GraphEvent.RELATION_BULK_WRITE
-        assert event.metadata.is_bulk is True
-        assert event.metadata.affected_count == 3
-        assert len(event.data["relations"]) == 3
+        context = received_events[0]
+        assert context.event == GraphEvent.RELATION_BULK_WRITE
+        assert context.metadata.is_bulk is True
+        assert context.metadata.affected_count == 2
+        assert context.metadata.relation_type == "MIXED"
+
+    @pytest.mark.asyncio
+    async def test_metadata_with_affected_types(
+        self,
+        event_system: EventSystem,
+        handler: EventHandler,
+        received_events: List[EventContext]
+    ):
+        """Test event metadata with affected types."""
+        await event_system.subscribe(GraphEvent.SCHEMA_MODIFIED, handler)
+        affected_types = {"Person", "Organization"}
+        await event_system.emit(
+            GraphEvent.SCHEMA_MODIFIED,
+            affected_types=affected_types
+        )
+
+        assert len(received_events) == 1
+        context = received_events[0]
+        assert context.metadata.affected_types == affected_types
+
+    @pytest.mark.asyncio
+    async def test_query_with_empty_spec(
+        self,
+        event_system: EventSystem,
+        handler: EventHandler,
+        received_events: List[EventContext]
+    ):
+        """Test query events without query spec."""
+        await event_system.subscribe(GraphEvent.QUERY_EXECUTED, handler)
+        await event_system.emit(GraphEvent.QUERY_EXECUTED)
+
+        assert len(received_events) == 1
+        context = received_events[0]
+        assert context.metadata.query_spec is None
+
+    @pytest.mark.asyncio
+    async def test_traversal_with_empty_spec(
+        self,
+        event_system: EventSystem,
+        handler: EventHandler,
+        received_events: List[EventContext]
+    ):
+        """Test traversal events without traversal spec."""
+        await event_system.subscribe(GraphEvent.TRAVERSAL_EXECUTED, handler)
+        await event_system.emit(GraphEvent.TRAVERSAL_EXECUTED)
+
+        assert len(received_events) == 1
+        context = received_events[0]
+        assert context.metadata.traversal_spec is None
+
+    @pytest.mark.asyncio
+    async def test_enable_disable_state(
+        self,
+        event_system: EventSystem,
+        handler: EventHandler,
+        received_events: List[EventContext]
+    ):
+        """Test enable/disable state transitions."""
+        await event_system.subscribe(GraphEvent.ENTITY_READ, handler)
+
+        # Initial state (enabled)
+        await event_system.emit(GraphEvent.ENTITY_READ)
+        assert len(received_events) == 1
+
+        # Disable
+        event_system.disable()
+        await event_system.emit(GraphEvent.ENTITY_READ)
+        assert len(received_events) == 1  # No new events
+
+        # Enable
+        event_system.enable()
+        await event_system.emit(GraphEvent.ENTITY_READ)
+        assert len(received_events) == 2  # New event received
+
+    @pytest.mark.asyncio
+    async def test_handler_error_with_multiple_handlers(
+        self,
+        event_system: EventSystem,
+        error_handler: EventHandler,
+        handler: EventHandler,
+        received_events: List[EventContext]
+    ):
+        """Test error handling with multiple handlers."""
+        # Add error handler first
+        await event_system.subscribe(GraphEvent.ENTITY_READ, error_handler)
+        # Add normal handler second
+        await event_system.subscribe(GraphEvent.ENTITY_READ, handler)
+
+        # Emit event - error handler should fail but not affect normal handler
+        await event_system.emit(GraphEvent.ENTITY_READ)
+
+        # Normal handler should still receive the event
+        assert len(received_events) == 1
+        assert received_events[0].event == GraphEvent.ENTITY_READ
+
+    @pytest.mark.asyncio
+    async def test_bulk_operation_without_count_data(
+        self,
+        event_system: EventSystem,
+        handler: EventHandler,
+        received_events: List[EventContext]
+    ):
+        """Test bulk operation events without entities or relations."""
+        await event_system.subscribe(GraphEvent.ENTITY_BULK_WRITE, handler)
+        await event_system.emit(GraphEvent.ENTITY_BULK_WRITE)
+
+        assert len(received_events) == 1
+        context = received_events[0]
+        assert context.metadata.is_bulk is True
+        assert context.metadata.affected_count is None

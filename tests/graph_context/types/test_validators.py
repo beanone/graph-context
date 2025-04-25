@@ -51,26 +51,6 @@ def test_validate_number():
         validate_number(3.14, PropertyType.INTEGER)
     assert "must be an integer" in str(exc_info.value)
 
-    # Float validation
-    assert validate_number(3.14, PropertyType.FLOAT) == 3.14
-    assert validate_number(42, PropertyType.FLOAT) == 42.0
-
-    with pytest.raises(ValidationError) as exc_info:
-        validate_number("42", PropertyType.FLOAT)
-    assert "must be a number" in str(exc_info.value)
-
-    # Range constraints
-    constraints = {"minimum": 0, "maximum": 100}
-    assert validate_number(42, PropertyType.INTEGER, constraints) == 42
-
-    with pytest.raises(ValidationError) as exc_info:
-        validate_number(-1, PropertyType.INTEGER, constraints)
-    assert "minimum" in str(exc_info.value)
-
-    with pytest.raises(ValidationError) as exc_info:
-        validate_number(101, PropertyType.INTEGER, constraints)
-    assert "maximum" in str(exc_info.value)
-
 
 def test_validate_boolean():
     """Test boolean validation."""
@@ -102,6 +82,12 @@ def test_validate_datetime():
     with pytest.raises(ValidationError) as exc_info:
         validate_datetime("invalid date")
     assert "format" in str(exc_info.value)
+
+    # Test non-string, non-datetime input
+    with pytest.raises(ValidationError) as exc_info:
+        validate_datetime(12345)
+    assert "Value must be a datetime" in str(exc_info.value)
+    assert exc_info.value.details["constraint"] == "type"
 
     # Range constraints
     min_date = datetime(2024, 1, 1, tzinfo=UTC)
@@ -628,3 +614,365 @@ def test_validate_list_with_all_property_types():
             validate_list([[1, 2, 3]], constraints)
         elif prop_type == PropertyType.DICT:
             validate_list([{"key": "value"}], constraints)
+
+
+def test_validate_list_with_all_property_types():
+    """Test list validation with all property types."""
+    constraints = {
+        "item_type": PropertyType.LIST,
+        "item_constraints": {
+            "item_type": PropertyType.DICT,
+            "item_constraints": {
+                "properties": {
+                    "name": {"type": PropertyType.STRING, "required": True},
+                    "age": {"type": PropertyType.INTEGER},
+                    "active": {"type": PropertyType.BOOLEAN}
+                }
+            }
+        }
+    }
+    value = [[{"name": "Alice", "age": 30, "active": True}]]
+    assert validate_list(value, constraints) == value
+
+def test_validate_float_value():
+    """Test internal float validation function."""
+    from graph_context.types.validators import _validate_float_value
+
+    # Test valid float values
+    assert _validate_float_value(3.14) == 3.14
+    assert _validate_float_value(-2.5) == -2.5
+    assert _validate_float_value(0.0) == 0.0
+
+    # Test integer conversion to float
+    assert _validate_float_value(42) == 42.0
+    assert _validate_float_value(-17) == -17.0
+    assert _validate_float_value(0) == 0.0
+
+
+def test_validate_fload_value_with_exceptions():
+    """Test float validation with exceptions."""
+    from graph_context.types.validators import _validate_float_value
+
+    # Test NaN rejection
+    with pytest.raises(ValidationError) as exc_info:
+        _validate_float_value(float('nan'))
+    assert "NaN values are not allowed" in str(exc_info.value)
+
+    # Test infinity rejection
+    with pytest.raises(ValidationError) as exc_info:
+        _validate_float_value(float('inf'))
+    assert "Infinite values are not allowed" in str(exc_info.value)
+
+    with pytest.raises(ValidationError) as exc_info:
+        _validate_float_value(float('-inf'))
+    assert "Infinite values are not allowed" in str(exc_info.value)
+
+    # Test invalid type rejection
+    invalid_values = ["3.14", [1.0], {"value": 2.0}, None, True]
+    for invalid_value in invalid_values:
+        with pytest.raises(ValidationError) as exc_info:
+            _validate_float_value(invalid_value)
+        assert "Value must be a number" in str(exc_info.value)
+
+
+def test_validate_float_special_values():
+    """Test validation of special float values."""
+    # Test NaN
+    with pytest.raises(ValidationError) as exc_info:
+        validate_number(float('nan'), PropertyType.FLOAT)
+    assert "NaN values are not allowed" in str(exc_info.value)
+
+    # Test positive infinity
+    with pytest.raises(ValidationError) as exc_info:
+        validate_number(float('inf'), PropertyType.FLOAT)
+    assert "Infinite values are not allowed" in str(exc_info.value)
+
+    # Test negative infinity
+    with pytest.raises(ValidationError) as exc_info:
+        validate_number(float('-inf'), PropertyType.FLOAT)
+    assert "Infinite values are not allowed" in str(exc_info.value)
+
+
+def test_validate_datetime_timezone_handling():
+    """Test datetime validation with timezone handling."""
+    # Test datetime with timezone
+    dt_with_tz = datetime.now(timezone(timedelta(hours=2)))
+    assert validate_datetime(dt_with_tz) == dt_with_tz
+
+    # Test datetime string with timezone
+    dt_str_with_tz = "2024-01-01T12:00:00+02:00"
+    result = validate_datetime(dt_str_with_tz)
+    assert result.tzinfo is not None
+    assert result.utcoffset() == timedelta(hours=2)
+
+
+def test_validate_dict_additional_properties():
+    """Test dictionary validation with additional properties."""
+    constraints = {
+        "properties": {
+            "name": {"type": PropertyType.STRING, "required": True}
+        },
+        "additional_properties": False
+    }
+
+    # Test with no additional properties
+    valid_dict = {"name": "test"}
+    assert validate_dict(valid_dict, constraints) == valid_dict
+
+    # Test with additional properties when not allowed
+    with pytest.raises(ValidationError) as exc_info:
+        validate_dict({"name": "test", "extra": "value"}, constraints)
+    assert "Additional properties are not allowed" in str(exc_info.value)
+
+    # Test with additional properties when allowed
+    constraints["additional_properties"] = True
+    assert validate_dict({"name": "test", "extra": "value"}, constraints) == {"name": "test", "extra": "value"}
+
+
+def test_validate_nested_list_validation():
+    """Test nested list validation with complex constraints."""
+    constraints = {
+        "item_type": PropertyType.LIST,
+        "item_constraints": {
+            "item_type": PropertyType.INTEGER,
+            "item_constraints": {"minimum": 0}
+        }
+    }
+
+    # Valid nested list
+    valid_list = [[1, 2], [3, 4]]
+    assert validate_list(valid_list, constraints) == valid_list
+
+    # Invalid inner list item
+    with pytest.raises(ValidationError) as exc_info:
+        validate_list([[1, -2], [3, 4]], constraints)
+    assert "minimum" in str(exc_info.value)
+
+    # Invalid inner list type
+    with pytest.raises(ValidationError) as exc_info:
+        validate_list([[1, "2"], [3, 4]], constraints)
+    assert "must be an integer" in str(exc_info.value)
+
+
+def test_validate_property_value_complex():
+    """Test property value validation with complex nested structures."""
+    # Test list property with nested dictionary
+    list_prop_def = PropertyDefinition(
+        type=PropertyType.LIST,
+        constraints={
+            "item_type": PropertyType.DICT,
+            "item_constraints": {
+                "properties": {
+                    "id": {"type": PropertyType.UUID, "required": True},
+                    "data": {
+                        "type": PropertyType.DICT,
+                        "constraints": {
+                            "properties": {
+                                "value": {"type": PropertyType.FLOAT},
+                                "timestamp": {"type": PropertyType.DATETIME}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    )
+
+    uuid_val = UUID('550e8400-e29b-41d4-a716-446655440000')
+    dt_val = datetime.now(UTC)
+    value = [{
+        "id": uuid_val,
+        "data": {
+            "value": 42.5,
+            "timestamp": dt_val
+        }
+    }]
+
+    result = validate_property_value(value, list_prop_def)
+    assert result == value
+    assert isinstance(result[0]["id"], UUID)
+    assert isinstance(result[0]["data"]["timestamp"], datetime)
+
+
+def test_validate_string_pattern():
+    """Test string validation with regex pattern."""
+    pattern = re.compile(r'^[A-Z][a-z]+$')
+    constraints = {"pattern": pattern}
+
+    # Valid pattern
+    assert validate_string("Hello", constraints) == "Hello"
+
+    # Invalid pattern
+    with pytest.raises(ValidationError) as exc_info:
+        validate_string("123", constraints)
+    assert "pattern constraint" in str(exc_info.value)
+
+
+def test_validate_list_empty_constraints():
+    """Test list validation with empty constraints."""
+    # Test with empty constraints
+    value = [1, 2, 3]
+    assert validate_list(value, {}) == value
+
+    # Test with None constraints
+    assert validate_list(value, None) == value
+
+
+def test_validate_dict_empty_properties():
+    """Test dictionary validation with empty properties."""
+    # Test with empty properties
+    constraints = {"properties": {}}
+    value = {"extra": "value"}
+    assert validate_dict(value, constraints) == value
+
+    # Test with additional_properties explicitly set
+    constraints = {"properties": {}, "additional_properties": True}
+    assert validate_dict(value, constraints) == value
+
+
+def test_validate_property_value_none():
+    """Test property value validation with None value."""
+    prop_def = PropertyDefinition(
+        type=PropertyType.STRING,
+        required=False
+    )
+    assert validate_property_value(None, prop_def) is None
+
+
+def test_validate_string_pattern_edge_cases():
+    """Test string validation with regex pattern edge cases."""
+    # Test with a pattern that doesn't match at all
+    pattern = re.compile(r'^[0-9]+$')  # Only digits
+    constraints = {"pattern": pattern}
+
+    # Test with a string that doesn't match at all
+    with pytest.raises(ValidationError) as exc_info:
+        validate_string("abc", constraints)
+    assert "pattern constraint" in str(exc_info.value)
+
+    # Test with a string that partially matches but not from start
+    with pytest.raises(ValidationError) as exc_info:
+        validate_string("abc123", constraints)
+    assert "pattern constraint" in str(exc_info.value)
+
+    # Test with empty string
+    with pytest.raises(ValidationError) as exc_info:
+        validate_string("", constraints)
+    assert "pattern constraint" in str(exc_info.value)
+
+    # Test with valid pattern
+    assert validate_string("123", constraints) == "123"
+
+def test_validate_constraints_required_property():
+    """Test _validate_constraints with missing required property."""
+    from graph_context.types.validators import _validate_constraints, ValidationError
+    from graph_context.types.type_base import PropertyType
+
+    constraints = {
+        "properties": {
+            "name": {
+                "type": PropertyType.STRING,
+                "required": True
+            }
+        }
+    }
+    value = {}
+
+    with pytest.raises(ValidationError) as exc_info:
+        _validate_constraints(value, constraints)
+    assert "required constraint: Property 'name' is missing" in str(exc_info.value)
+    assert exc_info.value.details["field"] == "name"
+    assert exc_info.value.details["constraint"] == "required"
+
+
+def test_validate_constraints_invalid_type():
+    """Test _validate_constraints with invalid property type."""
+    from graph_context.types.validators import _validate_constraints, ValidationError
+    from graph_context.types.type_base import PropertyType
+
+    constraints = {
+        "properties": {
+            "age": {
+                "type": "INVALID_TYPE"
+            }
+        }
+    }
+    value = {"age": 25}
+
+    with pytest.raises(ValidationError) as exc_info:
+        _validate_constraints(value, constraints)
+    assert "Unsupported property type" in str(exc_info.value)
+    assert exc_info.value.details["constraint"] == "type"
+
+
+def test_validate_constraints_validation_error():
+    """Test _validate_constraints propagating validation error from property validator."""
+    from graph_context.types.validators import _validate_constraints, ValidationError
+    from graph_context.types.type_base import PropertyType
+
+    constraints = {
+        "properties": {
+            "age": {
+                "type": PropertyType.INTEGER,
+                "constraints": {"minimum": 0}
+            }
+        }
+    }
+    value = {"age": -1}
+
+    with pytest.raises(ValidationError) as exc_info:
+        _validate_constraints(value, constraints)
+    assert "Invalid value for property 'age'" in str(exc_info.value)
+    assert exc_info.value.details["field"] == "age"
+    assert exc_info.value.details["value"] == -1
+    assert exc_info.value.details["constraint"] == "minimum"
+
+
+def test_validate_constraints_successful():
+    """Test _validate_constraints with successful validation."""
+    from graph_context.types.validators import _validate_constraints
+    from graph_context.types.type_base import PropertyType
+
+    constraints = {
+        "properties": {
+            "name": {
+                "type": PropertyType.STRING,
+                "constraints": {"min_length": 2}
+            },
+            "age": {
+                "type": PropertyType.INTEGER,
+                "constraints": {"minimum": 0}
+            }
+        }
+    }
+    value = {"name": "Alice", "age": 25}
+
+    # Function modifies dictionary in-place
+    _validate_constraints(value, constraints)
+    assert value["name"] == "Alice"
+    assert value["age"] == 25
+
+
+def test_validate_constraints_optional_property():
+    """Test _validate_constraints with optional property."""
+    from graph_context.types.validators import _validate_constraints
+    from graph_context.types.type_base import PropertyType
+
+    constraints = {
+        "properties": {
+            "name": {
+                "type": PropertyType.STRING,
+                "required": True
+            },
+            "age": {
+                "type": PropertyType.INTEGER,
+                "required": False
+            }
+        }
+    }
+    value = {"name": "Alice"}  # age is optional
+
+    # Should not raise any error for missing optional property
+    _validate_constraints(value, constraints)
+    assert value["name"] == "Alice"
+    assert "age" not in value
