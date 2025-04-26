@@ -6,9 +6,10 @@ from uuid import UUID
 
 import pytest
 
-from graph_context.exceptions import ValidationError
 from graph_context.types.type_base import PropertyDefinition, PropertyType
 from graph_context.types.validators import (
+    ValidationError,
+    _validate_constraints,
     validate_boolean,
     validate_datetime,
     validate_dict,
@@ -203,9 +204,7 @@ def test_validate_property_value():
     assert validate_property_value(123, prop_def) == 123
 
     # Test with constraints
-    prop_def = PropertyDefinition(
-        type=PropertyType.STRING, constraints={"min_length": 3}
-    )
+    prop_def = PropertyDefinition(type=PropertyType.STRING, constraints={"min_length": 3})
 
     assert validate_property_value("test", prop_def) == "test"
 
@@ -380,9 +379,7 @@ def test_validate_dict_extended():
     # Empty dictionary
     assert validate_dict({}) == {}
 
-    constraints = {
-        "properties": {"required_prop": {"type": PropertyType.STRING, "required": True}}
-    }
+    constraints = {"properties": {"required_prop": {"type": PropertyType.STRING, "required": True}}}
     with pytest.raises(ValidationError):
         validate_dict({}, constraints)
 
@@ -412,9 +409,7 @@ def test_validate_property_value_extended():
         validate_property_value(invalid_value, prop_def)
 
     # Default value with constraints
-    prop_def = PropertyDefinition(
-        type=PropertyType.STRING, default="default", constraints={"min_length": 3}
-    )
+    prop_def = PropertyDefinition(type=PropertyType.STRING, default="default", constraints={"min_length": 3})
 
     assert validate_property_value(None, prop_def) == "default"
 
@@ -513,16 +508,12 @@ def test_validate_property_value_edge_cases():
         validate_property_value(None, required_def)
 
     # Test None value with optional property and default
-    optional_def = PropertyDefinition(
-        type=PropertyType.STRING, required=False, default="default_value"
-    )
+    optional_def = PropertyDefinition(type=PropertyType.STRING, required=False, default="default_value")
     result = validate_property_value(None, optional_def)
     assert result == "default_value"
 
     # Test validation error propagation
-    list_def = PropertyDefinition(
-        type=PropertyType.LIST, constraints={"item_type": PropertyType.INTEGER}
-    )
+    list_def = PropertyDefinition(type=PropertyType.LIST, constraints={"item_type": PropertyType.INTEGER})
     with pytest.raises(ValidationError) as exc_info:
         validate_property_value(["not-an-int"], list_def)
     assert "Invalid item at index 0" in str(exc_info.value)
@@ -539,8 +530,7 @@ def test_validate_property_value_edge_cases():
 
 
 def test_validate_dict_additional_properties_with_empty_properties():
-    """Test dictionary validation with additional
-    properties check but no defined properties."""
+    """Validate with additional properties check empty properties."""
     constraints = {"additional_properties": False, "properties": {}}
 
     with pytest.raises(ValidationError, match="Additional properties are not allowed"):
@@ -569,7 +559,7 @@ def test_validate_list_with_all_property_types():
             validate_list([{"key": "value"}], constraints)
 
 
-def test_validate_list_with_all_property_types():
+def test_validate_list_with_all_property_types_1():
     """Test list validation with all property types."""
     constraints = {
         "item_type": PropertyType.LIST,
@@ -812,12 +802,8 @@ def test_validate_string_pattern_edge_cases():
 
 def test_validate_constraints_required_property():
     """Test _validate_constraints with missing required property."""
-    from graph_context.types.type_base import PropertyType
-    from graph_context.types.validators import ValidationError, _validate_constraints
 
-    constraints = {
-        "properties": {"name": {"type": PropertyType.STRING, "required": True}}
-    }
+    constraints = {"properties": {"name": {"type": PropertyType.STRING, "required": True}}}
     value = {}
 
     with pytest.raises(ValidationError) as exc_info:
@@ -829,7 +815,6 @@ def test_validate_constraints_required_property():
 
 def test_validate_constraints_invalid_type():
     """Test _validate_constraints with invalid property type."""
-    from graph_context.types.validators import ValidationError, _validate_constraints
 
     constraints = {"properties": {"age": {"type": "INVALID_TYPE"}}}
     value = {"age": 25}
@@ -842,14 +827,8 @@ def test_validate_constraints_invalid_type():
 
 def test_validate_constraints_validation_error():
     """Test _validate_constraints propagating validation error from property validator."""
-    from graph_context.types.type_base import PropertyType
-    from graph_context.types.validators import ValidationError, _validate_constraints
 
-    constraints = {
-        "properties": {
-            "age": {"type": PropertyType.INTEGER, "constraints": {"minimum": 0}}
-        }
-    }
+    constraints = {"properties": {"age": {"type": PropertyType.INTEGER, "constraints": {"minimum": 0}}}}
     value = {"age": -1}
 
     with pytest.raises(ValidationError) as exc_info:

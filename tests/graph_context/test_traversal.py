@@ -1,16 +1,16 @@
 """Tests for the graph traversal module."""
 
 from dataclasses import asdict
-from datetime import datetime, UTC
-from typing import Dict, List, Optional, Protocol
+from datetime import UTC, datetime
+from typing import Any, Dict, List, Optional
 
 import pytest
 
 from graph_context.traversal import (
     BreadthFirstTraversal,
-    create_traversal_spec,
     GraphLike,
     TraversalSpec,
+    create_traversal_spec,
     traverse,
 )
 from graph_context.types.type_base import Entity, Relation
@@ -20,16 +20,19 @@ class MockGraph(GraphLike):
     """Mock graph implementation for testing."""
 
     def __init__(self):
+        """Initialize the mock graph."""
         self.entities: Dict[str, Entity] = {}
         self.relations: Dict[str, Relation] = {}
 
     async def get_entity(self, entity_id: str) -> Optional[Entity]:
+        """Get an entity by ID."""
         return self.entities.get(entity_id)
 
     def get_relations(self) -> Dict[str, Relation]:
+        """Get all relations in the graph."""
         return self.relations
 
-    def add_entity(self, id: str, type: str, properties: Dict = None) -> None:
+    def add_entity(self, id: str, type: str, properties: Dict[str, Any] | None = None) -> None:
         """Helper to add an entity to the mock graph."""
         self.entities[id] = Entity(
             id=id,
@@ -45,7 +48,7 @@ class MockGraph(GraphLike):
         type: str,
         from_entity: str,
         to_entity: str,
-        properties: Dict = None,
+        properties: Dict[str, Any] | None = None,
     ) -> None:
         """Helper to add a relation to the mock graph."""
         self.relations[id] = Relation(
@@ -70,13 +73,16 @@ class DiamondGraph(GraphLike):
     """
 
     def __init__(self, entities: List[Entity], relations: List[Relation]):
+        """Initialize the diamond graph."""
         self.entities = {e.id: e for e in entities}
         self.relations = {r.id: r for r in relations}
 
     async def get_entity(self, entity_id: str) -> Optional[Entity]:
+        """Get an entity by ID."""
         return self.entities.get(entity_id)
 
     def get_relations(self) -> Dict[str, Relation]:
+        """Get all relations in the graph."""
         return self.relations
 
 
@@ -183,9 +189,7 @@ async def test_simple_traversal(simple_graph):
     assert len(results) == 0
 
     # Test with specific relation type
-    results = await traverse(
-        simple_graph, "A", {"direction": "outbound", "relation_types": ["parent"]}
-    )
+    results = await traverse(simple_graph, "A", {"direction": "outbound", "relation_types": ["parent"]})
     assert len(results) == 2
     assert {r.id for r in results} == {"B", "D"}
 
@@ -215,9 +219,7 @@ async def test_path_tracking(simple_graph):
 async def test_max_depth(simple_graph):
     """Test depth limiting in traversal."""
     # Depth 1 should only find direct connections
-    results = await traverse(
-        simple_graph, "A", {"direction": "outbound", "max_depth": 1}
-    )
+    results = await traverse(simple_graph, "A", {"direction": "outbound", "max_depth": 1})
     assert len(results) == 2
     assert {r.id for r in results} == {"B", "D"}
 
@@ -308,16 +310,12 @@ async def test_relation_type_filtering(simple_graph):
     """Test filtering by relation type."""
     # From A, following only friend relations
     # Should find no direct friends
-    results = await traverse(
-        simple_graph, "A", {"direction": "outbound", "relation_types": ["friend"]}
-    )
+    results = await traverse(simple_graph, "A", {"direction": "outbound", "relation_types": ["friend"]})
     assert len(results) == 0
 
     # From A, following only parent relations
     # Should find direct children B and D
-    results = await traverse(
-        simple_graph, "A", {"direction": "outbound", "relation_types": ["parent"]}
-    )
+    results = await traverse(simple_graph, "A", {"direction": "outbound", "relation_types": ["parent"]})
     assert len(results) == 2
     assert {r.id for r in results} == {"B", "D"}
 
@@ -487,10 +485,8 @@ async def test_self_referential_relation(cyclic_graph):
     # Verify that no returned path includes the self-referential step C->C
     found_self_loop = False
     for path_result in results:
-        for relation, entity in path_result.path:
-            if relation.id == "r_self" or (
-                relation.from_entity == "C" and relation.to_entity == "C"
-            ):
+        for relation, _ in path_result.path:
+            if relation.id == "r_self" or (relation.from_entity == "C" and relation.to_entity == "C"):
                 found_self_loop = True
                 break
         if found_self_loop:
@@ -515,13 +511,7 @@ def test_should_skip_node():
     current_path = []
 
     # Create test entities and relations
-    entity1 = Entity(
-        id="1",
-        type="test",
-        properties={},
-        created_at=datetime.now(UTC),
-        updated_at=datetime.now(UTC),
-    )
+
     entity2 = Entity(
         id="2",
         type="test",
@@ -614,9 +604,7 @@ async def test_dfs_multiple_skip_conditions():
     # 2. No cycles should be present in any path
     for result in results:
         path_nodes = {step[1].id for step in result.path}
-        assert len(path_nodes) == len(
-            result.path
-        ), f"Cycle detected in path to {result.entity.id}"
+        assert len(path_nodes) == len(result.path), f"Cycle detected in path to {result.entity.id}"
 
     # 3. All paths should be valid
     for result in results:
@@ -626,6 +614,4 @@ async def test_dfs_multiple_skip_conditions():
                 if i > 0:
                     prev_node = result.path[i - 1][1].id
                     curr_relation = result.path[i][0]
-                    assert (
-                        curr_relation.from_entity == prev_node
-                    ), f"Invalid path: {result.path}"
+                    assert curr_relation.from_entity == prev_node, f"Invalid path: {result.path}"

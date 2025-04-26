@@ -4,6 +4,7 @@ Type validation logic for the graph-context module.
 This module provides validation functions for checking property values against
 their defined types and constraints.
 """
+
 import math
 from datetime import datetime
 from typing import Any, Optional, Union
@@ -59,14 +60,18 @@ def validate_string(value: Any, constraints: Optional[dict[str, Any]] = None) ->
 
         if "pattern" in constraints and not constraints["pattern"].match(value):
             raise ValidationError(
-                "pattern constraint: String must match the specified pattern", value=value, constraint="pattern"
+                "pattern constraint: String must match the specified pattern",
+                value=value,
+                constraint="pattern",
             )
 
     return value
 
 
 def validate_number(
-    value: Any, property_type: PropertyType, constraints: Optional[dict[str, Any]] = None
+    value: Any,
+    property_type: PropertyType,
+    constraints: Optional[dict[str, Any]] = None,
 ) -> Union[int, float]:
     """
     Validate a numeric value against its constraints.
@@ -98,7 +103,9 @@ def validate_number(
 
         if "maximum" in constraints and value > constraints["maximum"]:
             raise ValidationError(
-                f"maximum constraint: Value must be at most {constraints['maximum']}", value=value, constraint="maximum"
+                f"maximum constraint: Value must be at most {constraints['maximum']}",
+                value=value,
+                constraint="maximum",
             )
 
     return value
@@ -161,7 +168,9 @@ def validate_datetime(value: Any, constraints: Optional[dict[str, Any]] = None) 
     if constraints:
         if "min_date" in constraints and value < constraints["min_date"]:
             raise ValidationError(
-                f"min_date constraint: Date must be after {constraints['min_date']}", value=value, constraint="min_date"
+                f"min_date constraint: Date must be after {constraints['min_date']}",
+                value=value,
+                constraint="min_date",
             )
 
         if "max_date" in constraints and value > constraints["max_date"]:
@@ -242,7 +251,9 @@ def validate_list(value: Any, constraints: Optional[dict[str, Any]] = None) -> l
                     value[i] = validator(item, item_constraints)
                 except ValidationError as e:
                     raise ValidationError(
-                        f"Invalid item at index {i}: {e!s}", value=item, constraint=e.details.get("constraint")
+                        f"Invalid item at index {i}: {e!s}",
+                        value=item,
+                        constraint=e.details.get("constraint"),
                     ) from e
 
     return value
@@ -289,7 +300,9 @@ def _validate_constraints(value, constraints):
     for prop_name, prop_def in properties.items():
         if prop_def.get("required", False) and prop_name not in value:
             raise ValidationError(
-                f"required constraint: Property '{prop_name}' is missing", field=prop_name, constraint="required"
+                f"required constraint: Property '{prop_name}' is missing",
+                field=prop_name,
+                constraint="required",
             )
 
         if prop_name in value:

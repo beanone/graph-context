@@ -1,20 +1,19 @@
+"""Tests for the BaseGraphContext class."""
+
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from graph_context.context_base import BaseGraphContext
 from graph_context.exceptions import SchemaError
-from graph_context.types.type_base import (
-    EntityType,
-    PropertyDefinition,
-    RelationType,
-)
+from graph_context.types.type_base import EntityType, PropertyDefinition, RelationType
 
 
 class MockBaseGraphContext(BaseGraphContext):
     """Test implementation of BaseGraphContext that uses mocks for all managers."""
 
     def __init__(self):
+        """Initialize the mock base graph context."""
         super().__init__()
 
         # Replace all managers with mocks
@@ -289,7 +288,10 @@ async def test_register_entity_type(base_context):
     """Test register_entity_type with a valid entity type."""
     # Setup
     base_context._events.emit = AsyncMock()
-    entity_type = EntityType(name="TestType", properties={"name": PropertyDefinition(type="string", required=True)})
+    entity_type = EntityType(
+        name="TestType",
+        properties={"name": PropertyDefinition(type="string", required=True)},
+    )
 
     # Call the method
     await base_context.register_entity_type(entity_type)
@@ -306,7 +308,10 @@ async def test_register_entity_type(base_context):
 async def test_register_entity_type_duplicate(base_context):
     """Test register_entity_type with a duplicate entity type."""
     # Setup
-    entity_type = EntityType(name="TestType", properties={"name": PropertyDefinition(type="string", required=True)})
+    entity_type = EntityType(
+        name="TestType",
+        properties={"name": PropertyDefinition(type="string", required=True)},
+    )
 
     # Register once
     await base_context.register_entity_type(entity_type)
@@ -325,7 +330,10 @@ async def test_register_relation_type(base_context):
     base_context._events.emit = AsyncMock()
 
     # Register required entity types
-    person_type = EntityType(name="Person", properties={"name": PropertyDefinition(type="string", required=True)})
+    person_type = EntityType(
+        name="Person",
+        properties={"name": PropertyDefinition(type="string", required=True)},
+    )
     base_context._entity_types["Person"] = person_type
 
     # Create relation type

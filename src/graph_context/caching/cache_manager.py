@@ -11,11 +11,7 @@ import time
 from datetime import UTC, datetime
 from typing import Any, Dict, Optional
 
-from graph_context.event_system import (
-    EventContext,
-    EventSystem,
-    GraphEvent,
-)
+from graph_context.event_system import EventContext, EventSystem, GraphEvent
 
 from .cache_store import CacheEntry, CacheStore, DisabledCacheStore
 from .cache_store_manager import CacheStoreManager
@@ -156,7 +152,11 @@ class CacheManager:
         # Cache the result if we have one
         if result:
             logger.debug("Storing in cache: %s", entity_id)
-            entry = CacheEntry(value=result, created_at=datetime.now(UTC), entity_type=context.metadata.entity_type)
+            entry = CacheEntry(
+                value=result,
+                created_at=datetime.now(UTC),
+                entity_type=context.metadata.entity_type,
+            )
             await store.set(entity_id, entry)
 
         return result
@@ -192,7 +192,11 @@ class CacheManager:
         # Cache the result if we have one
         if result:
             logger.debug("Storing in cache: %s", relation_id)
-            entry = CacheEntry(value=result, created_at=datetime.now(UTC), relation_type=context.metadata.relation_type)
+            entry = CacheEntry(
+                value=result,
+                created_at=datetime.now(UTC),
+                relation_type=context.metadata.relation_type,
+            )
             await store.set(relation_id, entry)
 
         return result
@@ -290,7 +294,8 @@ class CacheManager:
         )
 
         self.store_manager.traversal_store = CacheStore(
-            maxsize=self.config.traversal_cache_size, ttl=self.config.traversal_cache_ttl
+            maxsize=self.config.traversal_cache_size,
+            ttl=self.config.traversal_cache_ttl,
         )
 
     def disable(self) -> None:

@@ -4,6 +4,7 @@ Base implementation for the graph-context module.
 This module provides common functionality that can be used by specific graph
 context implementations.
 """
+
 from typing import Any
 
 from .event_system import EventSystem, GraphEvent
@@ -35,7 +36,11 @@ class SchemaValidator:
     conform to their type definitions in the schema.
     """
 
-    def __init__(self, entity_types: dict[str, EntityType], relation_types: dict[str, RelationType]) -> None:
+    def __init__(
+        self,
+        entity_types: dict[str, EntityType],
+        relation_types: dict[str, RelationType],
+    ) -> None:
         """
         Initialize the validator with type registries.
 
@@ -89,8 +94,12 @@ class SchemaValidator:
 
         return validated_props
 
-    def validate_relation(
-        self, relation_type: str, from_entity_type: str, to_entity_type: str, properties: dict[str, Any] | None = None
+    def validate_relation(  # noqa: C901
+        self,
+        relation_type: str,
+        from_entity_type: str,
+        to_entity_type: str,
+        properties: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """
         Validate relation properties and types against the schema.
@@ -115,7 +124,10 @@ class SchemaValidator:
 
         # Validate entity types
         if from_entity_type not in type_def.from_types:
-            raise ValidationError(f"Invalid from_entity_type: {from_entity_type}", field="from_entity_type")
+            raise ValidationError(
+                f"Invalid from_entity_type: {from_entity_type}",
+                field="from_entity_type",
+            )
 
         if to_entity_type not in type_def.to_types:
             raise ValidationError(f"Invalid to_entity_type: {to_entity_type}", field="to_entity_type")
@@ -243,7 +255,11 @@ class EntityManager:
     """
 
     def __init__(
-        self, store: GraphStore, events: EventSystem, validator: SchemaValidator, transaction: TransactionManager
+        self,
+        store: GraphStore,
+        events: EventSystem,
+        validator: SchemaValidator,
+        transaction: TransactionManager,
     ) -> None:
         """
         Initialize the entity manager.
@@ -370,7 +386,11 @@ class RelationManager:
     """
 
     def __init__(
-        self, store: GraphStore, events: EventSystem, validator: SchemaValidator, transaction: TransactionManager
+        self,
+        store: GraphStore,
+        events: EventSystem,
+        validator: SchemaValidator,
+        transaction: TransactionManager,
     ) -> None:
         """
         Initialize the relation manager.
@@ -399,12 +419,20 @@ class RelationManager:
         relation = await self._store.get_relation(relation_id)
 
         if relation:
-            await self._events.emit(GraphEvent.RELATION_READ, relation_id=relation_id, relation_type=relation.type)
+            await self._events.emit(
+                GraphEvent.RELATION_READ,
+                relation_id=relation_id,
+                relation_type=relation.type,
+            )
 
         return relation
 
     async def create(
-        self, relation_type: str, from_entity: str, to_entity: str, properties: dict[str, Any] | None = None
+        self,
+        relation_type: str,
+        from_entity: str,
+        to_entity: str,
+        properties: dict[str, Any] | None = None,
     ) -> str:
         """
         Create a new relation.
@@ -488,7 +516,11 @@ class RelationManager:
         success = await self._store.update_relation(relation_id, validated_props)
 
         if success:
-            await self._events.emit(GraphEvent.RELATION_WRITE, relation_id=relation_id, relation_type=relation.type)
+            await self._events.emit(
+                GraphEvent.RELATION_WRITE,
+                relation_id=relation_id,
+                relation_type=relation.type,
+            )
 
         return success
 
@@ -515,7 +547,11 @@ class RelationManager:
         success = await self._store.delete_relation(relation_id)
 
         if success:
-            await self._events.emit(GraphEvent.RELATION_DELETE, relation_id=relation_id, relation_type=relation.type)
+            await self._events.emit(
+                GraphEvent.RELATION_DELETE,
+                relation_id=relation_id,
+                relation_type=relation.type,
+            )
 
         return success
 
@@ -568,7 +604,11 @@ class QueryManager:
         """
         results = await self._store.traverse(start_entity, traversal_spec)
 
-        await self._events.emit(GraphEvent.TRAVERSAL_EXECUTED, start_entity=start_entity, traversal_spec=traversal_spec)
+        await self._events.emit(
+            GraphEvent.TRAVERSAL_EXECUTED,
+            start_entity=start_entity,
+            traversal_spec=traversal_spec,
+        )
 
         return results
 
@@ -623,10 +663,15 @@ class BaseGraphContext(GraphContext):
             SchemaError: If an entity type with the same name already exists
         """
         if entity_type.name in self._entity_types:
-            raise SchemaError(f"Entity type already exists: {entity_type.name}", schema_type=entity_type.name)
+            raise SchemaError(
+                f"Entity type already exists: {entity_type.name}",
+                schema_type=entity_type.name,
+            )
         self._entity_types[entity_type.name] = entity_type
         await self._events.emit(
-            GraphEvent.SCHEMA_MODIFIED, operation="register_entity_type", entity_type=entity_type.name
+            GraphEvent.SCHEMA_MODIFIED,
+            operation="register_entity_type",
+            entity_type=entity_type.name,
         )
         await self._events.emit(GraphEvent.TYPE_MODIFIED, entity_type=entity_type.name, operation="register")
 
@@ -642,7 +687,10 @@ class BaseGraphContext(GraphContext):
                         if any of the referenced entity types do not exist
         """
         if relation_type.name in self._relation_types:
-            raise SchemaError(f"Relation type already exists: {relation_type.name}", schema_type=relation_type.name)
+            raise SchemaError(
+                f"Relation type already exists: {relation_type.name}",
+                schema_type=relation_type.name,
+            )
 
         # Validate that referenced entity types exist
         for entity_type in relation_type.from_types:
@@ -656,14 +704,22 @@ class BaseGraphContext(GraphContext):
         for entity_type in relation_type.to_types:
             if entity_type not in self._entity_types:
                 raise SchemaError(
-                    f"Unknown entity type in to_types: {entity_type}", schema_type=relation_type.name, field="to_types"
+                    f"Unknown entity type in to_types: {entity_type}",
+                    schema_type=relation_type.name,
+                    field="to_types",
                 )
 
         self._relation_types[relation_type.name] = relation_type
         await self._events.emit(
-            GraphEvent.SCHEMA_MODIFIED, operation="register_relation_type", relation_type=relation_type.name
+            GraphEvent.SCHEMA_MODIFIED,
+            operation="register_relation_type",
+            relation_type=relation_type.name,
         )
-        await self._events.emit(GraphEvent.TYPE_MODIFIED, relation_type=relation_type.name, operation="register")
+        await self._events.emit(
+            GraphEvent.TYPE_MODIFIED,
+            relation_type=relation_type.name,
+            operation="register",
+        )
 
     def validate_entity(self, entity_type: str, properties: dict[str, Any]) -> dict[str, Any]:
         """
@@ -683,7 +739,11 @@ class BaseGraphContext(GraphContext):
         return self._validator.validate_entity(entity_type, properties)
 
     def validate_relation(
-        self, relation_type: str, from_entity_type: str, to_entity_type: str, properties: dict[str, Any] | None = None
+        self,
+        relation_type: str,
+        from_entity_type: str,
+        to_entity_type: str,
+        properties: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """
         Validate relation properties and types against the schema.
@@ -736,7 +796,11 @@ class BaseGraphContext(GraphContext):
         return await self._relation_manager.get(relation_id)
 
     async def create_relation(
-        self, relation_type: str, from_entity: str, to_entity: str, properties: dict[str, Any] | None = None
+        self,
+        relation_type: str,
+        from_entity: str,
+        to_entity: str,
+        properties: dict[str, Any] | None = None,
     ) -> str:
         """Create a new relation."""
         return await self._relation_manager.create(relation_type, from_entity, to_entity, properties)

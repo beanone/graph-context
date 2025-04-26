@@ -4,8 +4,9 @@ Tests for the integration between BaseGraphContext, GraphStoreFactory, and Graph
 These tests ensure that BaseGraphContext correctly uses the GraphStoreFactory to
 create store instances and interacts with them through the GraphStore interface.
 """
+
 from datetime import UTC, datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 from unittest import mock
 
 import pytest
@@ -25,7 +26,7 @@ from graph_context.types.type_base import (
 class MockGraphStore(GraphStore):
     """Mock implementation of GraphStore for testing."""
 
-    def __init__(self, config: Dict[str, Any]) -> None:
+    def __init__(self, config: dict[str, Any]) -> None:
         """Initialize with config."""
         self.config = config
         self.entities = {}
@@ -39,7 +40,7 @@ class MockGraphStore(GraphStore):
         """Get the current time with UTC timezone for timestamps."""
         return datetime.now(UTC)
 
-    async def create_entity(self, entity_type: str, properties: Dict[str, Any]) -> str:
+    async def create_entity(self, entity_type: str, properties: dict[str, Any]) -> str:
         """Mock create_entity method."""
         self.method_calls.append(("create_entity", entity_type, properties))
         entity_id = f"e-{len(self.entities) + 1}"
@@ -57,7 +58,7 @@ class MockGraphStore(GraphStore):
         self.method_calls.append(("get_entity", entity_id))
         return self.entities.get(entity_id)
 
-    async def update_entity(self, entity_id: str, properties: Dict[str, Any]) -> bool:
+    async def update_entity(self, entity_id: str, properties: dict[str, Any]) -> bool:
         """Mock update_entity method."""
         self.method_calls.append(("update_entity", entity_id, properties))
         if entity_id in self.entities:
@@ -89,7 +90,11 @@ class MockGraphStore(GraphStore):
         return False
 
     async def create_relation(
-        self, relation_type: str, from_entity: str, to_entity: str, properties: Optional[Dict[str, Any]] = None
+        self,
+        relation_type: str,
+        from_entity: str,
+        to_entity: str,
+        properties: Optional[dict[str, Any]] = None,
     ) -> str:
         """Mock create_relation method."""
         self.method_calls.append(("create_relation", relation_type, from_entity, to_entity, properties))
@@ -110,7 +115,7 @@ class MockGraphStore(GraphStore):
         self.method_calls.append(("get_relation", relation_id))
         return self.relations.get(relation_id)
 
-    async def update_relation(self, relation_id: str, properties: Dict[str, Any]) -> bool:
+    async def update_relation(self, relation_id: str, properties: dict[str, Any]) -> bool:
         """Mock update_relation method."""
         self.method_calls.append(("update_relation", relation_id, properties))
         if relation_id in self.relations:
@@ -136,12 +141,12 @@ class MockGraphStore(GraphStore):
             return True
         return False
 
-    async def query(self, query_spec: Dict[str, Any]) -> List[Entity]:
+    async def query(self, query_spec: dict[str, Any]) -> list[Entity]:
         """Mock query method."""
         self.method_calls.append(("query", query_spec))
         return list(self.entities.values())
 
-    async def traverse(self, start_entity: str, traversal_spec: Dict[str, Any]) -> List[Entity]:
+    async def traverse(self, start_entity: str, traversal_spec: dict[str, Any]) -> list[Entity]:
         """Mock traverse method."""
         self.method_calls.append(("traverse", start_entity, traversal_spec))
         return list(self.entities.values())
@@ -194,7 +199,9 @@ class TestBaseGraphContextStoreIntegration:
         # Create a BaseGraphContext instance
         with mock.patch("graph_context.store.GraphStoreFactory.create") as mock_create:
             mock_create.return_value = MockGraphStore({"test": "config"})
-            context = BaseGraphContext()
+            # Instantiate BaseGraphContext to test real integration and
+            # delegation to the store and managers
+            BaseGraphContext()
 
             # Verify that GraphStoreFactory.create was called
             mock_create.assert_called_once()
@@ -211,7 +218,10 @@ class TestBaseGraphContextStoreIntegration:
 
         # Register entity type for testing
         await context.register_entity_type(
-            EntityType(name="Person", properties={"name": PropertyDefinition(type="string", required=True)})
+            EntityType(
+                name="Person",
+                properties={"name": PropertyDefinition(type="string", required=True)},
+            )
         )
 
         # Begin transaction (required for operations)
@@ -222,7 +232,7 @@ class TestBaseGraphContextStoreIntegration:
         assert ("create_entity", "Person", {"name": "Alice"}) in store.method_calls
 
         # Get entity and verify delegation
-        entity = await context.get_entity(entity_id)
+        await context.get_entity(entity_id)
         assert ("get_entity", entity_id) in store.method_calls
 
         # Update entity and verify delegation
@@ -246,10 +256,16 @@ class TestBaseGraphContextStoreIntegration:
 
         # Register types for testing
         await context.register_entity_type(
-            EntityType(name="Person", properties={"name": PropertyDefinition(type="string", required=True)})
+            EntityType(
+                name="Person",
+                properties={"name": PropertyDefinition(type="string", required=True)},
+            )
         )
         await context.register_entity_type(
-            EntityType(name="Document", properties={"title": PropertyDefinition(type="string", required=True)})
+            EntityType(
+                name="Document",
+                properties={"title": PropertyDefinition(type="string", required=True)},
+            )
         )
         await context.register_relation_type(
             RelationType(
@@ -278,7 +294,7 @@ class TestBaseGraphContextStoreIntegration:
         )
 
         # Get relation and verify delegation
-        relation = await context.get_relation(relation_id)
+        await context.get_relation(relation_id)
         assert ("get_relation", relation_id) in store.method_calls
 
         # Update relation and verify delegation
@@ -301,7 +317,10 @@ class TestBaseGraphContextStoreIntegration:
 
         # Register entity type for testing
         await context.register_entity_type(
-            EntityType(name="Person", properties={"name": PropertyDefinition(type="string", required=True)})
+            EntityType(
+                name="Person",
+                properties={"name": PropertyDefinition(type="string", required=True)},
+            )
         )
 
         # Begin transaction

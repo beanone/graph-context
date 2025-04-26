@@ -8,6 +8,8 @@ from graph_context.caching.config import CacheConfig, CacheMetrics
 
 
 class TestCacheMetrics:
+    """Tests for the CacheMetrics class."""
+
     def test_default_initialization(self):
         """Test default initialization of CacheMetrics."""
         metrics = CacheMetrics()
@@ -51,6 +53,8 @@ class TestCacheMetrics:
 
 
 class TestCacheConfig:
+    """Tests for the CacheConfig class."""
+
     def test_default_initialization(self):
         """Test default initialization of CacheConfig."""
         config = CacheConfig()

@@ -5,7 +5,7 @@ This module provides configuration and metrics classes for the cache system.
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 
 @dataclass
@@ -17,7 +17,7 @@ class CacheMetrics:
     total_time: float = 0.0
     created_at: datetime = field(default_factory=datetime.now)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert metrics to a dictionary.
 
         Returns:
@@ -85,7 +85,7 @@ class CacheConfig:
         else:
             return self.default_ttl
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert configuration to a dictionary.
 
         Returns:
@@ -106,7 +106,7 @@ class CacheConfig:
         }
 
     @classmethod
-    def from_dict(cls, config: Dict[str, Any]) -> "CacheConfig":
+    def from_dict(cls, config: dict[str, Any]) -> "CacheConfig":
         """Create a configuration from a dictionary.
 
         Args:

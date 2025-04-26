@@ -4,20 +4,21 @@ Graph store interface definition.
 This module defines the interface for graph data storage operations that all
 concrete store implementations must implement.
 """
+
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from ..types.type_base import Entity, Relation
 
 
 class GraphStore(ABC):
-    """
-    Abstract interface for graph data storage operations.
+    """Abstract interface for graph data storage operations.
+
     Concrete implementations handle the actual persistence of entities and relations.
     """
 
     @abstractmethod
-    async def create_entity(self, entity_type: str, properties: Dict[str, Any]) -> str:
+    async def create_entity(self, entity_type: str, properties: dict[str, Any]) -> str:
         """Create a new entity in the graph."""
         pass
 
@@ -27,7 +28,7 @@ class GraphStore(ABC):
         pass
 
     @abstractmethod
-    async def update_entity(self, entity_id: str, properties: Dict[str, Any]) -> bool:
+    async def update_entity(self, entity_id: str, properties: dict[str, Any]) -> bool:
         """Update an existing entity."""
         pass
 
@@ -38,7 +39,11 @@ class GraphStore(ABC):
 
     @abstractmethod
     async def create_relation(
-        self, relation_type: str, from_entity: str, to_entity: str, properties: Optional[Dict[str, Any]] = None
+        self,
+        relation_type: str,
+        from_entity: str,
+        to_entity: str,
+        properties: Optional[dict[str, Any]] = None,
     ) -> str:
         """Create a new relation between entities."""
         pass
@@ -49,7 +54,7 @@ class GraphStore(ABC):
         pass
 
     @abstractmethod
-    async def update_relation(self, relation_id: str, properties: Dict[str, Any]) -> bool:
+    async def update_relation(self, relation_id: str, properties: dict[str, Any]) -> bool:
         """Update an existing relation."""
         pass
 
@@ -59,12 +64,12 @@ class GraphStore(ABC):
         pass
 
     @abstractmethod
-    async def query(self, query_spec: Dict[str, Any]) -> List[Entity]:
+    async def query(self, query_spec: dict[str, Any]) -> list[Entity]:
         """Execute a query against the graph."""
         pass
 
     @abstractmethod
-    async def traverse(self, start_entity: str, traversal_spec: Dict[str, Any]) -> List[Entity]:
+    async def traverse(self, start_entity: str, traversal_spec: dict[str, Any]) -> list[Entity]:
         """Traverse the graph starting from a given entity."""
         pass
 

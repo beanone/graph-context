@@ -1,7 +1,6 @@
 """Unit tests for the event system."""
 
 from datetime import datetime
-from typing import List
 from uuid import UUID
 
 import pytest
@@ -23,13 +22,13 @@ def event_system() -> EventSystem:
 
 
 @pytest.fixture
-def received_events() -> List[EventContext]:
+def received_events() -> list[EventContext]:
     """Track events received by handlers."""
     return []
 
 
 @pytest.fixture
-def handler(received_events: List[EventContext]) -> EventHandler:
+def handler(received_events: list[EventContext]) -> EventHandler:
     """Create a handler that records received events."""
 
     async def _handler(context: EventContext) -> None:
@@ -174,7 +173,7 @@ class TestEventSystem:
 
     @pytest.mark.asyncio
     async def test_subscribe_and_emit(
-        self, event_system: EventSystem, handler: EventHandler, received_events: List[EventContext]
+        self, event_system: EventSystem, handler: EventHandler, received_events: list[EventContext]
     ):
         """Test basic subscribe and emit functionality."""
         await event_system.subscribe(GraphEvent.ENTITY_READ, handler)
@@ -185,7 +184,7 @@ class TestEventSystem:
         assert received_events[0].data == {"entity_id": "123"}
 
     @pytest.mark.asyncio
-    async def test_multiple_handlers(self, event_system: EventSystem, received_events: List[EventContext]):
+    async def test_multiple_handlers(self, event_system: EventSystem, received_events: list[EventContext]):
         """Test multiple handlers for same event."""
 
         async def handler1(ctx: EventContext) -> None:
@@ -202,7 +201,7 @@ class TestEventSystem:
 
     @pytest.mark.asyncio
     async def test_unsubscribe(
-        self, event_system: EventSystem, handler: EventHandler, received_events: List[EventContext]
+        self, event_system: EventSystem, handler: EventHandler, received_events: list[EventContext]
     ):
         """Test unsubscribing a handler."""
         await event_system.subscribe(GraphEvent.ENTITY_READ, handler)
@@ -219,7 +218,7 @@ class TestEventSystem:
 
     @pytest.mark.asyncio
     async def test_disable_enable(
-        self, event_system: EventSystem, handler: EventHandler, received_events: List[EventContext]
+        self, event_system: EventSystem, handler: EventHandler, received_events: list[EventContext]
     ):
         """Test disabling and enabling event emission."""
         await event_system.subscribe(GraphEvent.ENTITY_READ, handler)
@@ -238,7 +237,7 @@ class TestEventSystem:
         event_system: EventSystem,
         error_handler: EventHandler,
         handler: EventHandler,
-        received_events: List[EventContext],
+        received_events: list[EventContext],
     ):
         """Test that handler errors don't affect other handlers."""
         await event_system.subscribe(GraphEvent.ENTITY_READ, error_handler)
@@ -249,9 +248,9 @@ class TestEventSystem:
         assert len(received_events) == 1
 
     @pytest.mark.asyncio
-    async def test_handler_execution_order(self, event_system: EventSystem, received_events: List[EventContext]):
+    async def test_handler_execution_order(self, event_system: EventSystem, received_events: list[EventContext]):
         """Test that handlers are executed in subscription order."""
-        order: List[int] = []
+        order: list[int] = []
 
         async def handler1(_: EventContext) -> None:
             order.append(1)
@@ -267,7 +266,7 @@ class TestEventSystem:
 
     @pytest.mark.asyncio
     async def test_different_events(
-        self, event_system: EventSystem, handler: EventHandler, received_events: List[EventContext]
+        self, event_system: EventSystem, handler: EventHandler, received_events: list[EventContext]
     ):
         """Test that handlers only receive their subscribed events."""
         await event_system.subscribe(GraphEvent.ENTITY_READ, handler)
@@ -282,7 +281,7 @@ class TestEventSystem:
 
     @pytest.mark.asyncio
     async def test_bulk_operation_events(
-        self, event_system: EventSystem, handler: EventHandler, received_events: List[EventContext]
+        self, event_system: EventSystem, handler: EventHandler, received_events: list[EventContext]
     ):
         """Test bulk operation events with metadata."""
         await event_system.subscribe(GraphEvent.ENTITY_BULK_WRITE, handler)
@@ -316,7 +315,7 @@ class TestEventSystem:
 
     @pytest.mark.asyncio
     async def test_query_events(
-        self, event_system: EventSystem, handler: EventHandler, received_events: List[EventContext]
+        self, event_system: EventSystem, handler: EventHandler, received_events: list[EventContext]
     ):
         """Test query execution events with metadata."""
         await event_system.subscribe(GraphEvent.QUERY_EXECUTED, handler)
@@ -342,7 +341,7 @@ class TestEventSystem:
 
     @pytest.mark.asyncio
     async def test_traversal_events(
-        self, event_system: EventSystem, handler: EventHandler, received_events: List[EventContext]
+        self, event_system: EventSystem, handler: EventHandler, received_events: list[EventContext]
     ):
         """Test traversal execution events with metadata."""
         await event_system.subscribe(GraphEvent.TRAVERSAL_EXECUTED, handler)
@@ -371,7 +370,7 @@ class TestEventSystem:
 
     @pytest.mark.asyncio
     async def test_schema_modification_events(
-        self, event_system: EventSystem, handler: EventHandler, received_events: List[EventContext]
+        self, event_system: EventSystem, handler: EventHandler, received_events: list[EventContext]
     ):
         """Test schema modification events with metadata."""
         await event_system.subscribe(GraphEvent.SCHEMA_MODIFIED, handler)
@@ -424,7 +423,7 @@ class TestEventSystem:
 
     @pytest.mark.asyncio
     async def test_metadata_from_data(
-        self, event_system: EventSystem, handler: EventHandler, received_events: List[EventContext]
+        self, event_system: EventSystem, handler: EventHandler, received_events: list[EventContext]
     ):
         """Test metadata creation from different data fields."""
         await event_system.subscribe(GraphEvent.RELATION_WRITE, handler)
@@ -454,7 +453,7 @@ class TestEventSystem:
 
     @pytest.mark.asyncio
     async def test_bulk_operation_with_relations(
-        self, event_system: EventSystem, handler: EventHandler, received_events: List[EventContext]
+        self, event_system: EventSystem, handler: EventHandler, received_events: list[EventContext]
     ):
         """Test bulk operation events with relations."""
         await event_system.subscribe(GraphEvent.RELATION_BULK_WRITE, handler)
@@ -473,7 +472,7 @@ class TestEventSystem:
 
     @pytest.mark.asyncio
     async def test_metadata_with_affected_types(
-        self, event_system: EventSystem, handler: EventHandler, received_events: List[EventContext]
+        self, event_system: EventSystem, handler: EventHandler, received_events: list[EventContext]
     ):
         """Test event metadata with affected types."""
         await event_system.subscribe(GraphEvent.SCHEMA_MODIFIED, handler)
@@ -486,7 +485,7 @@ class TestEventSystem:
 
     @pytest.mark.asyncio
     async def test_query_with_empty_spec(
-        self, event_system: EventSystem, handler: EventHandler, received_events: List[EventContext]
+        self, event_system: EventSystem, handler: EventHandler, received_events: list[EventContext]
     ):
         """Test query events without query spec."""
         await event_system.subscribe(GraphEvent.QUERY_EXECUTED, handler)
@@ -498,7 +497,7 @@ class TestEventSystem:
 
     @pytest.mark.asyncio
     async def test_traversal_with_empty_spec(
-        self, event_system: EventSystem, handler: EventHandler, received_events: List[EventContext]
+        self, event_system: EventSystem, handler: EventHandler, received_events: list[EventContext]
     ):
         """Test traversal events without traversal spec."""
         await event_system.subscribe(GraphEvent.TRAVERSAL_EXECUTED, handler)
@@ -510,7 +509,7 @@ class TestEventSystem:
 
     @pytest.mark.asyncio
     async def test_enable_disable_state(
-        self, event_system: EventSystem, handler: EventHandler, received_events: List[EventContext]
+        self, event_system: EventSystem, handler: EventHandler, received_events: list[EventContext]
     ):
         """Test enable/disable state transitions."""
         await event_system.subscribe(GraphEvent.ENTITY_READ, handler)
@@ -535,7 +534,7 @@ class TestEventSystem:
         event_system: EventSystem,
         error_handler: EventHandler,
         handler: EventHandler,
-        received_events: List[EventContext],
+        received_events: list[EventContext],
     ):
         """Test error handling with multiple handlers."""
         # Add error handler first
@@ -552,7 +551,7 @@ class TestEventSystem:
 
     @pytest.mark.asyncio
     async def test_bulk_operation_without_count_data(
-        self, event_system: EventSystem, handler: EventHandler, received_events: List[EventContext]
+        self, event_system: EventSystem, handler: EventHandler, received_events: list[EventContext]
     ):
         """Test bulk operation events without entities or relations."""
         await event_system.subscribe(GraphEvent.ENTITY_BULK_WRITE, handler)

@@ -74,7 +74,9 @@ class CacheStore:
         except KeyError:
             return None
 
-    async def set(self, key: str, entry: CacheEntry, dependencies: Optional[Set[str]] = None) -> None:
+    async def set(  # noqa: C901
+        self, key: str, entry: CacheEntry, dependencies: Optional[Set[str]] = None
+    ) -> None:
         """Store a cache entry.
 
         Args:
@@ -182,7 +184,7 @@ class CacheStore:
         self._entity_relations.clear()
         self._relation_entities.clear()
 
-    async def invalidate_type(self, type_name: str) -> None:
+    async def invalidate_type(self, type_name: str) -> None:  # noqa: C901
         """Invalidate all cache entries for a type.
 
         Args:

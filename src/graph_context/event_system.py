@@ -153,36 +153,7 @@ class EventSystem:
 
         # If metadata is not provided, create default metadata based on event type and data
         if metadata is None:
-            metadata_kwargs = {}
-
-            # Set bulk operation metadata
-            if event in {
-                GraphEvent.ENTITY_BULK_WRITE,
-                GraphEvent.ENTITY_BULK_DELETE,
-                GraphEvent.RELATION_BULK_WRITE,
-                GraphEvent.RELATION_BULK_DELETE,
-            }:
-                metadata_kwargs["is_bulk"] = True
-                if "entities" in data:
-                    metadata_kwargs["affected_count"] = len(data["entities"])
-                elif "relations" in data:
-                    metadata_kwargs["affected_count"] = len(data["relations"])
-
-            # Set query metadata
-            if event == GraphEvent.QUERY_EXECUTED and "query_spec" in data:
-                metadata_kwargs["query_spec"] = data["query_spec"]
-
-            # Set traversal metadata
-            if event == GraphEvent.TRAVERSAL_EXECUTED and "traversal_spec" in data:
-                metadata_kwargs["traversal_spec"] = data["traversal_spec"]
-
-            # Set type information
-            if "entity_type" in data:
-                metadata_kwargs["entity_type"] = data["entity_type"]
-            if "relation_type" in data:
-                metadata_kwargs["relation_type"] = data["relation_type"]
-            if "affected_types" in data:
-                metadata_kwargs["affected_types"] = set(data["affected_types"])
+            metadata_kwargs = self.create_metadata(event, data)
 
             metadata = EventMetadata(**metadata_kwargs)
 
@@ -198,6 +169,40 @@ class EventSystem:
                 # This prevents one handler from breaking others
                 # TODO: Add proper error logging
                 continue
+
+    def create_metadata(self, event, data):
+        """Create metadata for an event."""
+        metadata_kwargs = {}
+
+        # Set bulk operation metadata
+        if event in {
+            GraphEvent.ENTITY_BULK_WRITE,
+            GraphEvent.ENTITY_BULK_DELETE,
+            GraphEvent.RELATION_BULK_WRITE,
+            GraphEvent.RELATION_BULK_DELETE,
+        }:
+            metadata_kwargs["is_bulk"] = True
+            if "entities" in data:
+                metadata_kwargs["affected_count"] = len(data["entities"])
+            elif "relations" in data:
+                metadata_kwargs["affected_count"] = len(data["relations"])
+
+            # Set query metadata
+        if event == GraphEvent.QUERY_EXECUTED and "query_spec" in data:
+            metadata_kwargs["query_spec"] = data["query_spec"]
+
+            # Set traversal metadata
+        if event == GraphEvent.TRAVERSAL_EXECUTED and "traversal_spec" in data:
+            metadata_kwargs["traversal_spec"] = data["traversal_spec"]
+
+            # Set type information
+        if "entity_type" in data:
+            metadata_kwargs["entity_type"] = data["entity_type"]
+        if "relation_type" in data:
+            metadata_kwargs["relation_type"] = data["relation_type"]
+        if "affected_types" in data:
+            metadata_kwargs["affected_types"] = set(data["affected_types"])
+        return metadata_kwargs
 
     def enable(self) -> None:
         """Enable event emission."""

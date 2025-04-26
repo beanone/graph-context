@@ -410,7 +410,11 @@ class CachedGraphContext(GraphContext):
 
             # Notify cache manager about the write
             await self._cache_manager.handle_event(
-                EventContext(event=GraphEvent.ENTITY_WRITE, data={"entity_id": entity_id}, metadata=EventMetadata())
+                EventContext(
+                    event=GraphEvent.ENTITY_WRITE,
+                    data={"entity_id": entity_id},
+                    metadata=EventMetadata(),
+                )
             )
             logger.debug(f"Entity write event sent for {entity_id}")
         else:
@@ -429,13 +433,21 @@ class CachedGraphContext(GraphContext):
 
             # Notify cache manager about the delete
             await self._cache_manager.handle_event(
-                EventContext(event=GraphEvent.ENTITY_DELETE, data={"entity_id": entity_id}, metadata=EventMetadata())
+                EventContext(
+                    event=GraphEvent.ENTITY_DELETE,
+                    data={"entity_id": entity_id},
+                    metadata=EventMetadata(),
+                )
             )
 
         return success
 
     async def create_relation(
-        self, relation_type: str, from_entity: str, to_entity: str, properties: Optional[Dict[str, Any]] = None
+        self,
+        relation_type: str,
+        from_entity: str,
+        to_entity: str,
+        properties: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Create a new relation."""
         await self._initialize()
@@ -471,7 +483,9 @@ class CachedGraphContext(GraphContext):
             # Notify cache manager about the write
             await self._cache_manager.handle_event(
                 EventContext(
-                    event=GraphEvent.RELATION_WRITE, data={"relation_id": relation_id}, metadata=EventMetadata()
+                    event=GraphEvent.RELATION_WRITE,
+                    data={"relation_id": relation_id},
+                    metadata=EventMetadata(),
                 )
             )
 
@@ -489,7 +503,9 @@ class CachedGraphContext(GraphContext):
             # Notify cache manager about the delete
             await self._cache_manager.handle_event(
                 EventContext(
-                    event=GraphEvent.RELATION_DELETE, data={"relation_id": relation_id}, metadata=EventMetadata()
+                    event=GraphEvent.RELATION_DELETE,
+                    data={"relation_id": relation_id},
+                    metadata=EventMetadata(),
                 )
             )
 

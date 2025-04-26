@@ -4,6 +4,7 @@ In-memory implementation of the GraphStore interface.
 This module provides a simple in-memory implementation of the GraphStore interface,
 suitable for testing and development purposes.
 """
+
 from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any, Dict, List, Optional
@@ -62,7 +63,13 @@ class InMemoryGraphStore(GraphStore, GraphLike):
         """Create a new entity in the store."""
         entity_id = self._generate_id()
         now = self._get_current_time()
-        entity = Entity(id=entity_id, type=entity_type, properties=properties, created_at=now, updated_at=now)
+        entity = Entity(
+            id=entity_id,
+            type=entity_type,
+            properties=properties,
+            created_at=now,
+            updated_at=now,
+        )
         self._get_entities()[entity_id] = entity
         return entity_id
 
@@ -107,7 +114,11 @@ class InMemoryGraphStore(GraphStore, GraphLike):
         return True
 
     async def create_relation(
-        self, relation_type: str, from_entity: str, to_entity: str, properties: Optional[Dict[str, Any]] = None
+        self,
+        relation_type: str,
+        from_entity: str,
+        to_entity: str,
+        properties: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Create a new relation between entities."""
         # Verify both entities exist
@@ -251,7 +262,12 @@ class InMemoryGraphStore(GraphStore, GraphLike):
         strategy = traversal_spec.pop("strategy", "bfs")
         # Call the traversal function from the traversal module
         # Note: The traverse function handles the return_paths logic internally
-        return await traverse(graph=self, start_entity=start_entity, traversal_spec=traversal_spec, strategy=strategy)
+        return await traverse(
+            graph=self,
+            start_entity=start_entity,
+            traversal_spec=traversal_spec,
+            strategy=strategy,
+        )
 
     async def begin_transaction(self) -> None:
         """Begin a new transaction."""
