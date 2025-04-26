@@ -700,9 +700,6 @@ class BaseGraphContext(GraphContext):
         self._relation_manager = RelationManager(self._store, self._events, self._validator, self._transaction)
         self._query_manager = QueryManager(self._store, self._events)
 
-        # For backward compatibility with tests
-        self._in_transaction = False
-
     async def cleanup(self) -> None:
         """
         Clean up the graph context.
@@ -720,9 +717,6 @@ class BaseGraphContext(GraphContext):
         # Clear type registries
         self._entity_types.clear()
         self._relation_types.clear()
-
-        # For backward compatibility with tests
-        self._in_transaction = False
 
     async def register_entity_type(self, entity_type: EntityType) -> None:
         """
@@ -848,40 +842,17 @@ class BaseGraphContext(GraphContext):
             properties
         )
 
-    def _check_transaction(self, required: bool = True) -> None:
-        """
-        Check transaction state.
-
-        Args:
-            required: Whether a transaction is required
-
-        Raises:
-            TransactionError: If transaction state does not match requirement
-        """
-        # For compatibility with test_check_transaction
-        # Test directly modifies _in_transaction and bypasses _transaction manager
-        if required and not self._in_transaction:
-            raise TransactionError("Operation requires an active transaction")
-        elif not required and self._in_transaction:
-            raise TransactionError("Operation cannot be performed in a transaction")
-
     async def begin_transaction(self) -> None:
         """Begin a new transaction."""
         await self._transaction.begin_transaction()
-        # For backward compatibility with tests
-        self._in_transaction = True
 
     async def commit_transaction(self) -> None:
         """Commit the current transaction."""
         await self._transaction.commit_transaction()
-        # For backward compatibility with tests
-        self._in_transaction = False
 
     async def rollback_transaction(self) -> None:
         """Rollback the current transaction."""
         await self._transaction.rollback_transaction()
-        # For backward compatibility with tests
-        self._in_transaction = False
 
     async def get_entity(self, entity_id: str) -> Entity | None:
         """Get an entity by ID."""

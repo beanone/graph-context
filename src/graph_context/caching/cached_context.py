@@ -10,13 +10,149 @@ import logging
 from ..event_system import GraphEvent, EventContext, EventMetadata
 from ..types.type_base import Entity, Relation, QuerySpec, TraversalSpec
 from ..interface import GraphContext
-from ..exceptions import EntityNotFoundError, RelationNotFoundError
+from ..exceptions import EntityNotFoundError, RelationNotFoundError, TransactionError
 from .cache_store import CacheEntry
 from .cache_manager import CacheManager
 from .config import CacheConfig
 
 
 logger = logging.getLogger(__name__)
+
+
+class CacheTransactionManager:
+    """
+    Manages transaction state and operations for cached context.
+
+    This class encapsulates transaction-related logic to ensure proper
+    transaction state management for the cached context.
+    """
+
+    def __init__(self, base_context: GraphContext, cache_manager: CacheManager):
+        """
+        Initialize the transaction manager.
+
+        Args:
+            base_context: The base graph context to delegate transactions to
+            cache_manager: The cache manager to notify about transaction events
+        """
+        self._base_context = base_context
+        self._cache_manager = cache_manager
+        self._in_transaction = False
+
+    def is_in_transaction(self) -> bool:
+        """Return whether there is an active transaction."""
+        return self._in_transaction
+
+    def check_transaction(self, required: bool = True) -> None:
+        """
+        Check transaction state.
+
+        Args:
+            required: Whether a transaction is required
+
+        Raises:
+            TransactionError: If transaction state does not match requirement
+        """
+        if required and not self._in_transaction:
+            raise TransactionError("Operation requires an active transaction")
+        elif not required and self._in_transaction:
+            raise TransactionError("Operation cannot be performed in a transaction")
+
+    async def begin_transaction(self) -> None:
+        """
+        Begin a new transaction.
+
+        Raises:
+            TransactionError: If a transaction is already in progress
+        """
+        logger.debug("Beginning transaction")
+
+        if self._in_transaction:
+            logger.warning("Transaction already in progress")
+            raise TransactionError("Transaction already in progress")
+
+        # First begin the transaction in the base context
+        await self._base_context.begin_transaction()
+
+        # Set transaction flag
+        self._in_transaction = True
+
+        # Clear all caches to ensure we get fresh data during the transaction
+        await self._cache_manager.store_manager.clear_all()
+        logger.debug("Transaction started - all caches cleared")
+
+        # Notify cache manager about transaction begin
+        await self._cache_manager.handle_event(EventContext(
+            event=GraphEvent.TRANSACTION_BEGIN,
+            data={},
+            metadata=EventMetadata()
+        ))
+        logger.debug("Transaction begin event sent to cache manager")
+
+    async def commit_transaction(self) -> None:
+        """
+        Commit the current transaction.
+
+        Raises:
+            TransactionError: If no transaction is in progress
+        """
+        logger.debug("Committing transaction")
+
+        if not self._in_transaction:
+            logger.warning("Commit called but no active transaction")
+            raise TransactionError("No transaction in progress")
+
+        # Commit in the base context
+        await self._base_context.commit_transaction()
+        logger.debug("Base context transaction committed")
+
+        # Clear transaction state
+        self._in_transaction = False
+
+        # Clear all caches to ensure we get fresh data after commit
+        await self._cache_manager.store_manager.clear_all()
+        logger.debug("All caches cleared after commit")
+
+        # Notify cache manager about transaction commit
+        await self._cache_manager.handle_event(EventContext(
+            event=GraphEvent.TRANSACTION_COMMIT,
+            data={},
+            metadata=EventMetadata()
+        ))
+        logger.debug("Transaction commit event sent to cache manager")
+
+    async def rollback_transaction(self) -> None:
+        """
+        Rollback the current transaction.
+
+        Raises:
+            TransactionError: If no transaction is in progress
+        """
+        logger.debug("Rolling back transaction")
+
+        if not self._in_transaction:
+            logger.warning("Rollback called but no active transaction")
+            raise TransactionError("No transaction in progress")
+
+        # Rollback the base context
+        await self._base_context.rollback_transaction()
+        logger.debug("Base context transaction rolled back")
+
+        # Clear transaction state
+        self._in_transaction = False
+
+        # Clear all caches to ensure we get fresh data after rollback
+        await self._cache_manager.store_manager.clear_all()
+        logger.debug("All caches cleared after rollback")
+
+        # Notify cache manager about transaction rollback
+        await self._cache_manager.handle_event(EventContext(
+            event=GraphEvent.TRANSACTION_ROLLBACK,
+            data={},
+            metadata=EventMetadata()
+        ))
+        logger.debug("Transaction rollback event sent to cache manager")
+
 
 class CachedGraphContext(GraphContext):
     """A decorator that adds caching to any GraphContext implementation.
@@ -40,7 +176,7 @@ class CachedGraphContext(GraphContext):
         self._base = base_context
         self._cache_manager = cache_manager
         self._initialized = False
-        self._in_transaction = False
+        self._transaction = CacheTransactionManager(self._base, self._cache_manager)
 
     async def _initialize(self) -> None:
         """Initialize event subscriptions asynchronously."""
@@ -79,6 +215,10 @@ class CachedGraphContext(GraphContext):
 
     async def cleanup(self) -> None:
         """Clean up resources."""
+        # Rollback any active transaction
+        if self._transaction.is_in_transaction():
+            await self._transaction.rollback_transaction()
+
         await self._base.cleanup()
 
     async def get_entity(self, entity_id: str) -> Entity | None:
@@ -97,7 +237,7 @@ class CachedGraphContext(GraphContext):
         logger.debug(f"Getting entity {entity_id}")
 
         # Skip cache if in transaction - go directly to base context
-        if self._in_transaction:
+        if self._transaction.is_in_transaction():
             logger.debug(f"In transaction, bypassing cache for entity {entity_id}")
             result = await self._base.get_entity(entity_id)
             if result is None:
@@ -143,7 +283,7 @@ class CachedGraphContext(GraphContext):
         await self._initialize()
 
         # Skip cache if in transaction - go directly to base context
-        if self._in_transaction:
+        if self._transaction.is_in_transaction():
             result = await self._base.get_relation(relation_id)
             if result is None:
                 raise RelationNotFoundError(f"Relation {relation_id} not found")
@@ -181,7 +321,7 @@ class CachedGraphContext(GraphContext):
         logger.debug(f"Executing query with spec: {query_spec}")
 
         # Skip cache if in transaction - go directly to base context
-        if self._in_transaction:
+        if self._transaction.is_in_transaction():
             logger.debug("In transaction, bypassing cache for query")
             return await self._base.query(query_spec) or []
 
@@ -227,7 +367,7 @@ class CachedGraphContext(GraphContext):
         await self._initialize()
 
         # Skip cache if in transaction - go directly to base context
-        if self._in_transaction:
+        if self._transaction.is_in_transaction():
             return await self._base.traverse(start_entity, traversal_spec) or []
 
         # Try to get from cache first
@@ -255,7 +395,7 @@ class CachedGraphContext(GraphContext):
         entity_id = await self._base.create_entity(entity_type, properties)
 
         # Cache the newly created entity if not in transaction
-        if not self._in_transaction:
+        if not self._transaction.is_in_transaction():
             entity = await self._base.get_entity(entity_id)
             if entity is not None:
                 entry = CacheEntry(
@@ -329,7 +469,7 @@ class CachedGraphContext(GraphContext):
         relation_id = await self._base.create_relation(relation_type, from_entity, to_entity, properties)
 
         # Cache the newly created relation if not in transaction
-        if not self._in_transaction:
+        if not self._transaction.is_in_transaction():
             relation = await self._base.get_relation(relation_id)
             if relation is not None:
                 entry = CacheEntry(
@@ -386,81 +526,17 @@ class CachedGraphContext(GraphContext):
     async def begin_transaction(self) -> None:
         """Begin a new transaction."""
         await self._initialize()
-        logger.debug("Beginning transaction")
-
-        # First begin the transaction in the base context
-        await self._base.begin_transaction()
-
-        # Set transaction flag
-        self._in_transaction = True
-
-        # Clear all caches to ensure we get fresh data during the transaction
-        await self._cache_manager.store_manager.clear_all()
-        logger.debug("Transaction started - all caches cleared")
-
-        # Notify cache manager about transaction begin
-        await self._cache_manager.handle_event(EventContext(
-            event=GraphEvent.TRANSACTION_BEGIN,
-            data={},
-            metadata=EventMetadata()
-        ))
-        logger.debug("Transaction begin event sent to cache manager")
+        await self._transaction.begin_transaction()
 
     async def commit_transaction(self) -> None:
         """Commit the current transaction."""
         await self._initialize()
-        logger.debug("Committing transaction")
-
-        if not self._in_transaction:
-            logger.warning("Commit called but no active transaction")
-            return
-
-        # Commit in the base context
-        await self._base.commit_transaction()
-        logger.debug("Base context transaction committed")
-
-        # Clear transaction state
-        self._in_transaction = False
-
-        # Clear all caches to ensure we get fresh data after commit
-        await self._cache_manager.store_manager.clear_all()
-        logger.debug("All caches cleared after commit")
-
-        # Notify cache manager about transaction commit
-        await self._cache_manager.handle_event(EventContext(
-            event=GraphEvent.TRANSACTION_COMMIT,
-            data={},
-            metadata=EventMetadata()
-        ))
-        logger.debug("Transaction commit event sent to cache manager")
+        await self._transaction.commit_transaction()
 
     async def rollback_transaction(self) -> None:
         """Roll back the current transaction."""
         await self._initialize()
-        logger.debug("Rolling back transaction")
-
-        if not self._in_transaction:
-            logger.warning("Rollback called but no active transaction")
-            return
-
-        # Rollback the base context
-        await self._base.rollback_transaction()
-        logger.debug("Base context transaction rolled back")
-
-        # Clear transaction state
-        self._in_transaction = False
-
-        # Clear all caches to ensure we get fresh data after rollback
-        await self._cache_manager.store_manager.clear_all()
-        logger.debug("All caches cleared after rollback")
-
-        # Notify cache manager about transaction rollback
-        await self._cache_manager.handle_event(EventContext(
-            event=GraphEvent.TRANSACTION_ROLLBACK,
-            data={},
-            metadata=EventMetadata()
-        ))
-        logger.debug("Transaction rollback event sent to cache manager")
+        await self._transaction.rollback_transaction()
 
     async def bulk_create_entities(self, entity_type: str, entities: List[Dict[str, Any]]) -> List[str]:
         """Create multiple entities in bulk."""
