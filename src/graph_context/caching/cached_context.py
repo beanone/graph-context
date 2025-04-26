@@ -13,7 +13,6 @@ from ..interface import GraphContext
 from ..exceptions import EntityNotFoundError, RelationNotFoundError, TransactionError
 from .cache_store import CacheEntry
 from .cache_manager import CacheManager
-from .config import CacheConfig
 
 
 logger = logging.getLogger(__name__)
