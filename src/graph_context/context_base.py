@@ -6,19 +6,25 @@ context implementations.
 """
 from typing import Any
 
+from .event_system import EventSystem, GraphEvent
 from .exceptions import (
+    EntityNotFoundError,
     SchemaError,
     TransactionError,
     ValidationError,
-    EntityNotFoundError,
-    GraphContextError
 )
 from .interface import GraphContext
-from .types.type_base import EntityType, RelationType, Entity, Relation, QuerySpec, TraversalSpec
-from .types.validators import validate_property_value
-from .event_system import EventSystem, GraphEvent
-from .store import GraphStoreFactory
 from .interfaces.store import GraphStore
+from .store import GraphStoreFactory
+from .types.type_base import (
+    Entity,
+    EntityType,
+    QuerySpec,
+    Relation,
+    RelationType,
+    TraversalSpec,
+)
+from .types.validators import validate_property_value
 
 
 class SchemaValidator:

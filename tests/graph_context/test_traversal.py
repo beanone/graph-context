@@ -1,18 +1,18 @@
 """Tests for the graph traversal module."""
-import pytest
-from datetime import datetime, UTC
-from typing import Dict, Optional, List, Protocol
 from dataclasses import asdict
+from datetime import UTC, datetime
+from typing import Dict, List, Optional, Protocol
 
-from graph_context.types.type_base import Entity, Relation
+import pytest
+
 from graph_context.traversal import (
+    BreadthFirstTraversal,
     GraphLike,
     TraversalSpec,
-    TraversalPath,
-    traverse,
     create_traversal_spec,
-    BreadthFirstTraversal,
+    traverse,
 )
+from graph_context.types.type_base import Entity, Relation
 
 
 class GraphLike(Protocol):

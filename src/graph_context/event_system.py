@@ -5,12 +5,13 @@ This module provides a minimal pub/sub system for graph operations, allowing fea
 to react to changes in the graph without coupling to specific implementations.
 """
 
-from enum import Enum
-from typing import Any, Callable, Awaitable, Dict, Optional, Set
 from collections import defaultdict
-from pydantic import BaseModel, ConfigDict, Field
-from uuid import uuid4
 from datetime import datetime
+from enum import Enum
+from typing import Any, Awaitable, Callable, Dict, Optional, Set
+from uuid import uuid4
+
+from pydantic import BaseModel, ConfigDict, Field
 
 # Type alias for event handlers
 EventHandler = Callable[["EventContext"], Awaitable[None]]

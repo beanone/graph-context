@@ -1,8 +1,10 @@
 """Tests for the cache configuration module."""
 
-import pytest
 from datetime import datetime, timedelta
-from graph_context.caching.config import CacheMetrics, CacheConfig
+
+import pytest
+
+from graph_context.caching.config import CacheConfig, CacheMetrics
 
 
 class TestCacheMetrics:

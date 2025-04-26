@@ -4,16 +4,15 @@ This module provides a cached implementation of the graph context interface,
 which wraps a base context and adds caching functionality using the decorator pattern.
 """
 
-from typing import Optional, Dict, Any, List
 import logging
+from typing import Any, Dict, Optional
 
-from ..event_system import GraphEvent, EventContext, EventMetadata
-from ..types.type_base import Entity, Relation, QuerySpec, TraversalSpec
-from ..interface import GraphContext
+from ..event_system import EventContext, EventMetadata, GraphEvent
 from ..exceptions import EntityNotFoundError, RelationNotFoundError, TransactionError
-from .cache_store import CacheEntry
+from ..interface import GraphContext
+from ..types.type_base import Entity, QuerySpec, Relation, TraversalSpec
 from .cache_manager import CacheManager
-
+from .cache_store import CacheEntry
 
 logger = logging.getLogger(__name__)
 

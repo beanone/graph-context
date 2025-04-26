@@ -1,12 +1,13 @@
 """
 Tests for the QueryManager class.
 """
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from graph_context.context_base import QueryManager
 from graph_context.event_system import GraphEvent
-from graph_context.types.type_base import QuerySpec, TraversalSpec, Entity
+from graph_context.types.type_base import Entity, QuerySpec, TraversalSpec
 
 
 @pytest.fixture

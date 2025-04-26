@@ -1,11 +1,12 @@
 """Tests for the cache store manager."""
 
-import pytest
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
+import pytest
+
+from graph_context.caching.cache_store import CacheEntry
 from graph_context.caching.cache_store_manager import CacheStoreManager
 from graph_context.caching.config import CacheConfig
-from graph_context.caching.cache_store import CacheEntry
 
 
 @pytest.fixture

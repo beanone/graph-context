@@ -1,11 +1,13 @@
 """Unit tests for the cache store implementation."""
 
-import pytest
 import asyncio
 from uuid import uuid4
 
-from graph_context.caching.cache_store import CacheStore, CacheEntry
+import pytest
+
+from graph_context.caching.cache_store import CacheEntry, CacheStore
 from graph_context.types.type_base import Entity, Relation
+
 
 @pytest.fixture
 def cache_store():

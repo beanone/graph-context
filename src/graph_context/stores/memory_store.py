@@ -4,14 +4,14 @@ In-memory implementation of the GraphStore interface.
 This module provides a simple in-memory implementation of the GraphStore interface,
 suitable for testing and development purposes.
 """
-from datetime import datetime, UTC
-from typing import Dict, List, Optional, Any, Union
 from copy import deepcopy
+from datetime import UTC, datetime
+from typing import Any, Dict, List, Optional
 
-from ..interfaces.store import GraphStore
-from ..types.type_base import Entity, Relation
 from ..exceptions import EntityNotFoundError, TransactionError
-from ..traversal import traverse, GraphLike, TraversalPath
+from ..interfaces.store import GraphStore
+from ..traversal import GraphLike, TraversalPath, traverse
+from ..types.type_base import Entity, Relation
 
 
 class InMemoryGraphStore(GraphStore, GraphLike):

@@ -4,14 +4,13 @@ This module provides the core caching functionality for the graph context,
 including the cache entry model and storage interface.
 """
 
-from typing import (TypeVar, Generic, Optional,
-                    AsyncIterator, Tuple,
-                    Set, Dict, Any)
-from datetime import datetime, UTC
-from pydantic import BaseModel, Field, ConfigDict
-from uuid import uuid4
-from cachetools import TTLCache
 from collections import defaultdict
+from datetime import UTC, datetime
+from typing import AsyncIterator, Dict, Generic, Optional, Set, Tuple, TypeVar
+from uuid import uuid4
+
+from cachetools import TTLCache
+from pydantic import BaseModel, ConfigDict, Field
 
 T = TypeVar('T')  # Changed from BaseModel to Any
 

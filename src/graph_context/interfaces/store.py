@@ -5,7 +5,7 @@ This module defines the interface for graph data storage operations that all
 concrete store implementations must implement.
 """
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
 from ..types.type_base import Entity, Relation
 

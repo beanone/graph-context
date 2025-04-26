@@ -1,12 +1,17 @@
 """
 Tests for the RelationManager class.
 """
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
-from graph_context.context_base import RelationManager, SchemaValidator, TransactionManager
+import pytest
+
+from graph_context.context_base import (
+    RelationManager,
+    SchemaValidator,
+    TransactionManager,
+)
 from graph_context.event_system import GraphEvent
-from graph_context.exceptions import EntityNotFoundError, ValidationError, SchemaError
+from graph_context.exceptions import EntityNotFoundError
 from graph_context.types.type_base import Entity, Relation
 
 

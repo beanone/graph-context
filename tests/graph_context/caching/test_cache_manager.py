@@ -1,18 +1,19 @@
 """Tests for the CacheManager class."""
 
-import pytest
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, Mock, patch
-from datetime import datetime, UTC
 
-from graph_context.event_system import (
-    EventSystem,
-    GraphEvent,
-    EventContext,
-    EventMetadata
-)
+import pytest
+
 from graph_context.caching.cache_manager import CacheManager
 from graph_context.caching.cache_store import CacheEntry
 from graph_context.caching.config import CacheConfig
+from graph_context.event_system import (
+    EventContext,
+    EventMetadata,
+    EventSystem,
+    GraphEvent,
+)
 
 
 @pytest.fixture

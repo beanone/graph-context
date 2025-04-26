@@ -1,18 +1,20 @@
 """Unit tests for the event system."""
 
-import pytest
-from pydantic import ValidationError
-from typing import List
 from datetime import datetime
+from typing import List
 from uuid import UUID
 
+import pytest
+from pydantic import ValidationError
+
 from graph_context.event_system import (
+    EventContext,
+    EventHandler,
+    EventMetadata,
     EventSystem,
     GraphEvent,
-    EventContext,
-    EventMetadata,
-    EventHandler
 )
+
 
 @pytest.fixture
 def event_system() -> EventSystem:

@@ -4,15 +4,22 @@ Tests for the integration between BaseGraphContext, GraphStoreFactory, and Graph
 These tests ensure that BaseGraphContext correctly uses the GraphStoreFactory to
 create store instances and interacts with them through the GraphStore interface.
 """
-import pytest
+from datetime import UTC, datetime
+from typing import Any, Dict, List, Optional
 from unittest import mock
-from typing import Dict, Any, Optional, List
-from datetime import datetime, UTC
+
+import pytest
 
 from graph_context.context_base import BaseGraphContext
-from graph_context.store import GraphStoreFactory
 from graph_context.interfaces.store import GraphStore
-from graph_context.types.type_base import Entity, Relation, PropertyDefinition, EntityType, RelationType
+from graph_context.store import GraphStoreFactory
+from graph_context.types.type_base import (
+    Entity,
+    EntityType,
+    PropertyDefinition,
+    Relation,
+    RelationType,
+)
 
 
 class MockGraphStore(GraphStore):

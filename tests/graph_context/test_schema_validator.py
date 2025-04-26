@@ -4,9 +4,13 @@ Tests for the SchemaValidator class.
 import pytest
 
 from graph_context.context_base import SchemaValidator
-from graph_context.types.type_base import EntityType, RelationType, PropertyType
-from graph_context.types.type_base import PropertyDefinition
 from graph_context.exceptions import SchemaError, ValidationError
+from graph_context.types.type_base import (
+    EntityType,
+    PropertyDefinition,
+    PropertyType,
+    RelationType,
+)
 
 
 @pytest.fixture

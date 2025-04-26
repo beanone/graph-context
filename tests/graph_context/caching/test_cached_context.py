@@ -1,20 +1,29 @@
 """Integration tests for the cached graph context implementation."""
 
-from typing import Dict, Any, Optional, List, AsyncGenerator
 import asyncio
 import logging
-import pytest
-from unittest.mock import AsyncMock, Mock, patch, call
-from datetime import datetime, UTC
-import types
+from datetime import UTC, datetime
+from typing import AsyncGenerator, List
+from unittest.mock import AsyncMock, Mock
 
-from graph_context.caching.cached_context import CachedGraphContext, CacheTransactionManager
+import pytest
+
 from graph_context.caching.cache_manager import CacheManager
 from graph_context.caching.cache_store import CacheEntry
-from graph_context.event_system import EventSystem, GraphEvent, EventContext, EventMetadata
+from graph_context.caching.cached_context import CachedGraphContext
 from graph_context.context_base import BaseGraphContext
-from graph_context.types.type_base import Entity, Relation, EntityType, PropertyDefinition, RelationType
-from graph_context.exceptions import SchemaError, EntityNotFoundError, RelationNotFoundError, TransactionError
+from graph_context.event_system import EventContext, EventMetadata, GraphEvent
+from graph_context.exceptions import (
+    EntityNotFoundError,
+    RelationNotFoundError,
+    TransactionError,
+)
+from graph_context.types.type_base import (
+    Entity,
+    EntityType,
+    PropertyDefinition,
+    RelationType,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -782,9 +791,10 @@ async def test_cache_operations_with_disabled_cache(cached_context):
 @pytest.mark.asyncio
 async def test_initialize_event_subscriptions():
     """Test that _initialize subscribes cache manager to all relevant events when _events exists."""
+    from unittest.mock import AsyncMock, Mock
+
     from graph_context.caching.cached_context import CachedGraphContext
     from graph_context.event_system import EventSystem, GraphEvent
-    from unittest.mock import AsyncMock, Mock
 
     # Create a mock base context that explicitly HAS an _events attribute
     events = EventSystem() # Use a real event system
@@ -835,8 +845,8 @@ async def test_initialize_event_subscriptions():
 @pytest.mark.asyncio
 async def test_initialization_with_real_context(base_context):
     """Test initialization with a real base context."""
-    from graph_context.caching.cached_context import CachedGraphContext
     from graph_context.caching.cache_manager import CacheManager
+    from graph_context.caching.cached_context import CachedGraphContext
 
     # Create a real cache manager
     cache_manager = CacheManager()

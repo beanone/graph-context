@@ -4,23 +4,22 @@ This module provides the CacheManager class that handles caching operations
 and event handling for the graph context.
 """
 
-import time
-import logging
 import hashlib
 import json
+import logging
+import time
+from datetime import UTC, datetime
 from typing import Any, Dict, Optional
-from datetime import datetime, UTC
 
 from graph_context.event_system import (
+    EventContext,
     EventSystem,
     GraphEvent,
-    EventContext,
-    EventMetadata
 )
-from .cache_store import CacheEntry, DisabledCacheStore, CacheStore
+
+from .cache_store import CacheEntry, CacheStore, DisabledCacheStore
 from .cache_store_manager import CacheStoreManager
 from .config import CacheConfig, CacheMetrics
-
 
 # Setup module logger
 logger = logging.getLogger(__name__)

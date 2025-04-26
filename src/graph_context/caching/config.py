@@ -3,9 +3,9 @@
 This module provides configuration and metrics classes for the cache system.
 """
 
-from typing import Dict, Any, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any, Dict, Optional
 
 
 @dataclass

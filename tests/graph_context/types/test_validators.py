@@ -865,8 +865,8 @@ def test_validate_string_pattern_edge_cases():
 
 def test_validate_constraints_required_property():
     """Test _validate_constraints with missing required property."""
-    from graph_context.types.validators import _validate_constraints, ValidationError
     from graph_context.types.type_base import PropertyType
+    from graph_context.types.validators import ValidationError, _validate_constraints
 
     constraints = {
         "properties": {
@@ -887,8 +887,7 @@ def test_validate_constraints_required_property():
 
 def test_validate_constraints_invalid_type():
     """Test _validate_constraints with invalid property type."""
-    from graph_context.types.validators import _validate_constraints, ValidationError
-    from graph_context.types.type_base import PropertyType
+    from graph_context.types.validators import ValidationError, _validate_constraints
 
     constraints = {
         "properties": {
@@ -907,8 +906,8 @@ def test_validate_constraints_invalid_type():
 
 def test_validate_constraints_validation_error():
     """Test _validate_constraints propagating validation error from property validator."""
-    from graph_context.types.validators import _validate_constraints, ValidationError
     from graph_context.types.type_base import PropertyType
+    from graph_context.types.validators import ValidationError, _validate_constraints
 
     constraints = {
         "properties": {
@@ -930,8 +929,8 @@ def test_validate_constraints_validation_error():
 
 def test_validate_constraints_successful():
     """Test _validate_constraints with successful validation."""
-    from graph_context.types.validators import _validate_constraints
     from graph_context.types.type_base import PropertyType
+    from graph_context.types.validators import _validate_constraints
 
     constraints = {
         "properties": {
@@ -955,8 +954,8 @@ def test_validate_constraints_successful():
 
 def test_validate_constraints_optional_property():
     """Test _validate_constraints with optional property."""
-    from graph_context.types.validators import _validate_constraints
     from graph_context.types.type_base import PropertyType
+    from graph_context.types.validators import _validate_constraints
 
     constraints = {
         "properties": {

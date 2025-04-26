@@ -4,9 +4,9 @@ Graph traversal module providing different traversal strategies and utilities.
 This module encapsulates the logic for traversing graphs, supporting different
 traversal strategies, path tracking, and cycle detection.
 """
-from typing import Dict, List, Any, Set, Tuple, Optional, TypeVar, Generic, Protocol, Iterator
-from dataclasses import dataclass
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Any, Dict, Iterator, List, Optional, Protocol, Set, Tuple
 
 from .types.type_base import Entity, Relation
 

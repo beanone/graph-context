@@ -1,12 +1,11 @@
 """Tests for the graph store factory."""
-import pytest
-import os
 import json
+import os
 from unittest import mock
-from typing import Dict, Any, Type
+
+import pytest
 
 from graph_context.store import GraphStoreFactory, StoreConfig
-from graph_context.interfaces.store import GraphStore
 from graph_context.stores.memory_store import InMemoryGraphStore
 
 

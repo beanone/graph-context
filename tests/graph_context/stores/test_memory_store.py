@@ -1,11 +1,10 @@
 """Tests for the in-memory graph store implementation."""
-import pytest
 from datetime import datetime
-from typing import Dict, Any
 
-from graph_context.stores.memory_store import InMemoryGraphStore
+import pytest
+
 from graph_context.exceptions import EntityNotFoundError, TransactionError
-from graph_context.types.type_base import Entity, Relation
+from graph_context.stores.memory_store import InMemoryGraphStore
 from graph_context.traversal import TraversalPath
 
 
