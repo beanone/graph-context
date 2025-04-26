@@ -10,7 +10,7 @@ import logging
 from ..event_system import GraphEvent, EventContext, EventMetadata
 from ..types.type_base import Entity, Relation, QuerySpec, TraversalSpec
 from ..interface import GraphContext
-from ..exceptions import EntityNotFoundError
+from ..exceptions import EntityNotFoundError, RelationNotFoundError
 from .cache_store import CacheEntry
 from .cache_manager import CacheManager
 from .config import CacheConfig
@@ -41,7 +41,6 @@ class CachedGraphContext(GraphContext):
         self._cache_manager = cache_manager
         self._initialized = False
         self._in_transaction = False
-        self._transaction_cache = {}
 
     async def _initialize(self) -> None:
         """Initialize event subscriptions asynchronously."""
@@ -97,37 +96,20 @@ class CachedGraphContext(GraphContext):
         await self._initialize()
         logger.debug(f"Getting entity {entity_id}")
 
-        # After rollback, always get fresh data from base context
-        if not self._in_transaction:
-            logger.debug(f"Not in transaction, getting fresh data from base context for {entity_id}")
+        # Skip cache if in transaction - go directly to base context
+        if self._in_transaction:
+            logger.debug(f"In transaction, bypassing cache for entity {entity_id}")
             result = await self._base.get_entity(entity_id)
-            if result is not None:
-                # Update cache with fresh data
-                entry = CacheEntry(
-                    value=result,
-                    entity_type=result["type"]
-                )
-                await self._cache_manager.store_manager.get_entity_store().set(entity_id, entry)
-                logger.debug(f"Updated cache with fresh data for entity {entity_id}")
-                return result
-            else:
+            if result is None:
                 logger.debug(f"Entity {entity_id} not found in base context")
                 raise EntityNotFoundError(f"Entity {entity_id} not found")
-
-        # If in transaction, check transaction cache first
-        if self._in_transaction and entity_id in self._transaction_cache:
-            logger.debug(f"Found entity {entity_id} in transaction cache")
-            return self._transaction_cache[entity_id]
+            return result
 
         # Try to get from cache
         cached = await self._cache_manager.store_manager.get_entity_store().get(entity_id)
         if cached is not None:
-            result = cached.value
-            if self._in_transaction:
-                self._transaction_cache[entity_id] = result
-                logger.debug(f"Cached entity {entity_id} in transaction cache")
-            logger.debug(f"Found entity {entity_id} in main cache")
-            return result
+            logger.debug(f"Found entity {entity_id} in cache")
+            return cached.value
 
         # Fall back to base context
         logger.debug(f"Getting entity {entity_id} from base context")
@@ -140,8 +122,6 @@ class CachedGraphContext(GraphContext):
                 entity_type=result["type"]
             )
             await self._cache_manager.store_manager.get_entity_store().set(entity_id, entry)
-            if self._in_transaction:
-                self._transaction_cache[entity_id] = result
             logger.debug(f"Cached entity {entity_id} from base context")
             return result
         else:
@@ -156,8 +136,18 @@ class CachedGraphContext(GraphContext):
 
         Returns:
             The relation if found, None otherwise
+
+        Raises:
+            RelationNotFoundError: If the relation does not exist
         """
         await self._initialize()
+
+        # Skip cache if in transaction - go directly to base context
+        if self._in_transaction:
+            result = await self._base.get_relation(relation_id)
+            if result is None:
+                raise RelationNotFoundError(f"Relation {relation_id} not found")
+            return result
 
         # Try to get from cache first
         cached = await self._cache_manager.store_manager.get_relation_store().get(relation_id)
@@ -174,8 +164,9 @@ class CachedGraphContext(GraphContext):
                 relation_type=result["type"]
             )
             await self._cache_manager.store_manager.get_relation_store().set(relation_id, entry)
-
-        return result
+            return result
+        else:
+            raise RelationNotFoundError(f"Relation {relation_id} not found")
 
     async def query(self, query_spec: QuerySpec) -> list[Entity]:
         """Execute a query against the graph.
@@ -188,6 +179,11 @@ class CachedGraphContext(GraphContext):
         """
         await self._initialize()
         logger.debug(f"Executing query with spec: {query_spec}")
+
+        # Skip cache if in transaction - go directly to base context
+        if self._in_transaction:
+            logger.debug("In transaction, bypassing cache for query")
+            return await self._base.query(query_spec) or []
 
         # Try to get from cache first
         query_hash = self._cache_manager._hash_query(query_spec)
@@ -230,6 +226,10 @@ class CachedGraphContext(GraphContext):
         """
         await self._initialize()
 
+        # Skip cache if in transaction - go directly to base context
+        if self._in_transaction:
+            return await self._base.traverse(start_entity, traversal_spec) or []
+
         # Try to get from cache first
         traversal_hash = self._cache_manager._hash_query(traversal_spec)
         cached = await self._cache_manager.store_manager.get_traversal_store().get(traversal_hash)
@@ -247,21 +247,22 @@ class CachedGraphContext(GraphContext):
             )
             await self._cache_manager.store_manager.get_traversal_store().set(traversal_hash, entry)
 
-        return result
+        return result or []  # Ensure we always return a list
 
     async def create_entity(self, entity_type: str, properties: Dict[str, Any]) -> str:
         """Create a new entity."""
         await self._initialize()
         entity_id = await self._base.create_entity(entity_type, properties)
 
-        # Cache the newly created entity
-        entity = await self._base.get_entity(entity_id)
-        if entity is not None:
-            entry = CacheEntry(
-                value=entity,
-                entity_type=entity_type
-            )
-            await self._cache_manager.store_manager.get_entity_store().set(entity_id, entry)
+        # Cache the newly created entity if not in transaction
+        if not self._in_transaction:
+            entity = await self._base.get_entity(entity_id)
+            if entity is not None:
+                entry = CacheEntry(
+                    value=entity,
+                    entity_type=entity_type
+                )
+                await self._cache_manager.store_manager.get_entity_store().set(entity_id, entry)
 
         # Notify cache manager about the write
         await self._cache_manager.handle_event(EventContext(
@@ -277,28 +278,14 @@ class CachedGraphContext(GraphContext):
         await self._initialize()
         logger.debug(f"Updating entity {entity_id} with properties {properties}")
 
-        # Get current state before update if in transaction
-        if self._in_transaction:
-            try:
-                current_entity = await self.get_entity(entity_id)
-                logger.debug(f"Current entity state before update: {current_entity}")
-            except EntityNotFoundError:
-                logger.debug(f"No current state found for entity {entity_id}")
-                current_entity = None
-
         success = await self._base.update_entity(entity_id, properties)
 
         if success:
             logger.debug(f"Entity {entity_id} updated successfully")
 
-            # Clear from transaction cache if in transaction
-            if self._in_transaction:
-                old_value = self._transaction_cache.pop(entity_id, None)
-                logger.debug(f"Cleared entity {entity_id} from transaction cache. Old value: {old_value}")
-
             # Clear from main cache
             await self._cache_manager.store_manager.get_entity_store().delete(entity_id)
-            logger.debug(f"Cleared entity {entity_id} from main cache")
+            logger.debug(f"Cleared entity {entity_id} from cache")
 
             # Notify cache manager about the write
             await self._cache_manager.handle_event(EventContext(
@@ -341,14 +328,15 @@ class CachedGraphContext(GraphContext):
         await self._initialize()
         relation_id = await self._base.create_relation(relation_type, from_entity, to_entity, properties)
 
-        # Cache the newly created relation
-        relation = await self._base.get_relation(relation_id)
-        if relation is not None:
-            entry = CacheEntry(
-                value=relation,
-                relation_type=relation_type
-            )
-            await self._cache_manager.store_manager.get_relation_store().set(relation_id, entry)
+        # Cache the newly created relation if not in transaction
+        if not self._in_transaction:
+            relation = await self._base.get_relation(relation_id)
+            if relation is not None:
+                entry = CacheEntry(
+                    value=relation,
+                    relation_type=relation_type
+                )
+                await self._cache_manager.store_manager.get_relation_store().set(relation_id, entry)
 
         # Notify cache manager about the write
         await self._cache_manager.handle_event(EventContext(
@@ -399,12 +387,16 @@ class CachedGraphContext(GraphContext):
         """Begin a new transaction."""
         await self._initialize()
         logger.debug("Beginning transaction")
+
+        # First begin the transaction in the base context
         await self._base.begin_transaction()
 
-        # Save current cache state
+        # Set transaction flag
         self._in_transaction = True
-        self._transaction_cache = {}
-        logger.debug("Transaction started - cache state initialized")
+
+        # Clear all caches to ensure we get fresh data during the transaction
+        await self._cache_manager.store_manager.clear_all()
+        logger.debug("Transaction started - all caches cleared")
 
         # Notify cache manager about transaction begin
         await self._cache_manager.handle_event(EventContext(
@@ -423,18 +415,14 @@ class CachedGraphContext(GraphContext):
             logger.warning("Commit called but no active transaction")
             return
 
+        # Commit in the base context
         await self._base.commit_transaction()
         logger.debug("Base context transaction committed")
 
-        # Log transaction cache state before clearing
-        logger.debug(f"Transaction cache state before commit: {self._transaction_cache}")
-
         # Clear transaction state
         self._in_transaction = False
-        self._transaction_cache = {}
-        logger.debug("Transaction state cleared")
 
-        # Clear all caches to ensure we get fresh data
+        # Clear all caches to ensure we get fresh data after commit
         await self._cache_manager.store_manager.clear_all()
         logger.debug("All caches cleared after commit")
 
@@ -455,19 +443,14 @@ class CachedGraphContext(GraphContext):
             logger.warning("Rollback called but no active transaction")
             return
 
-        # Log transaction cache state before rollback
-        logger.debug(f"Transaction cache state before rollback: {self._transaction_cache}")
-
-        # First rollback the base context
+        # Rollback the base context
         await self._base.rollback_transaction()
         logger.debug("Base context transaction rolled back")
 
         # Clear transaction state
         self._in_transaction = False
-        self._transaction_cache = {}
-        logger.debug("Transaction state cleared")
 
-        # Clear all caches to ensure we get fresh data
+        # Clear all caches to ensure we get fresh data after rollback
         await self._cache_manager.store_manager.clear_all()
         logger.debug("All caches cleared after rollback")
 

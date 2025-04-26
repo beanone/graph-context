@@ -290,3 +290,38 @@ class CacheStore:
             self._entity_relations.pop(key, None)
         elif key.startswith("relation:"):
             self._relation_entities.pop(key, None)
+
+class DisabledCacheStore(CacheStore):
+    """A cache store implementation that does nothing.
+
+    This is used when caching is disabled to avoid conditional logic
+    spread throughout the codebase.
+    """
+
+    async def get(self, key: str) -> Optional[CacheEntry]:
+        """Get a cache entry by key.
+
+        Always returns None when caching is disabled.
+        """
+        return None
+
+    async def set(self, key: str, entry: CacheEntry) -> None:
+        """Set a cache entry.
+
+        Does nothing when caching is disabled.
+        """
+        pass
+
+    async def delete(self, key: str) -> None:
+        """Delete a cache entry.
+
+        Does nothing when caching is disabled.
+        """
+        pass
+
+    async def clear(self) -> None:
+        """Clear all entries in the cache.
+
+        Does nothing when caching is disabled.
+        """
+        pass

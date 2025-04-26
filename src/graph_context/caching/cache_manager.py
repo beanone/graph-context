@@ -17,7 +17,7 @@ from graph_context.event_system import (
     EventContext,
     EventMetadata
 )
-from .cache_store import CacheEntry
+from .cache_store import CacheEntry, DisabledCacheStore, CacheStore
 from .cache_store_manager import CacheStoreManager
 from .config import CacheConfig, CacheMetrics
 
@@ -42,7 +42,6 @@ class CacheManager:
         self.config = config or CacheConfig()
         self.store_manager = CacheStoreManager(self.config)
         self.metrics = CacheMetrics() if self.config.enable_metrics else None
-        self._enabled = True
         self._in_transaction = False
         self._transaction_cache: Dict[str, Dict[str, CacheEntry]] = {
             'entity': {},
@@ -54,6 +53,11 @@ class CacheManager:
         # Subscribe to events if event system is provided
         if event_system:
             self._subscribe_to_events(event_system)
+
+    def is_enabled(self) -> bool:
+        """Check if caching is enabled."""
+        # Caching is disabled if we're using DisabledCacheStore
+        return not isinstance(self.store_manager.entity_store, DisabledCacheStore)
 
     def _subscribe_to_events(self, event_system: EventSystem) -> None:
         """Subscribe to relevant graph events."""
@@ -100,7 +104,7 @@ class CacheManager:
         """Handle a graph event."""
         start_time = time.time()
         try:
-            if not self._enabled:
+            if not self.is_enabled():
                 # When cache is disabled, treat all reads as misses
                 if context.event in [GraphEvent.ENTITY_READ, GraphEvent.RELATION_READ,
                                    GraphEvent.QUERY_EXECUTED, GraphEvent.TRAVERSAL_EXECUTED]:
@@ -374,14 +378,48 @@ class CacheManager:
             cache.clear()
 
     def enable(self) -> None:
-        """Enable the cache manager."""
+        """Enable caching by creating new cache stores."""
+        if self.is_enabled():
+            return
+
         logger.info("Enabling cache manager")
-        self._enabled = True
+
+        # Create fresh cache stores
+        self.store_manager.entity_store = CacheStore(
+            maxsize=self.config.entity_cache_size,
+            ttl=self.config.entity_cache_ttl
+        )
+
+        self.store_manager.relation_store = CacheStore(
+            maxsize=self.config.relation_cache_size,
+            ttl=self.config.relation_cache_ttl
+        )
+
+        self.store_manager.query_store = CacheStore(
+            maxsize=self.config.query_cache_size,
+            ttl=self.config.query_cache_ttl
+        )
+
+        self.store_manager.traversal_store = CacheStore(
+            maxsize=self.config.traversal_cache_size,
+            ttl=self.config.traversal_cache_ttl
+        )
 
     def disable(self) -> None:
-        """Disable the cache manager."""
+        """Disable caching by replacing stores with DisabledCacheStore."""
+        if not self.is_enabled():
+            return
+
         logger.info("Disabling cache manager")
-        self._enabled = False
+
+        # Create a single disabled store and use it for all store types
+        disabled_store = DisabledCacheStore()
+
+        # Replace all stores with the disabled store
+        self.store_manager.entity_store = disabled_store
+        self.store_manager.relation_store = disabled_store
+        self.store_manager.query_store = disabled_store
+        self.store_manager.traversal_store = disabled_store
 
     async def clear(self) -> None:
         """Clear all caches."""
