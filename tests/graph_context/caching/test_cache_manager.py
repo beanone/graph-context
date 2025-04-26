@@ -1,18 +1,19 @@
 """Tests for the CacheManager class."""
 
-import pytest
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, Mock, patch
-from datetime import datetime, UTC
 
-from graph_context.event_system import (
-    EventSystem,
-    GraphEvent,
-    EventContext,
-    EventMetadata
-)
+import pytest
+
 from graph_context.caching.cache_manager import CacheManager
 from graph_context.caching.cache_store import CacheEntry
 from graph_context.caching.config import CacheConfig
+from graph_context.event_system import (
+    EventContext,
+    EventMetadata,
+    EventSystem,
+    GraphEvent,
+)
 
 
 @pytest.fixture
@@ -35,7 +36,7 @@ def cache_config():
         query_cache_size=100,
         query_cache_ttl=3600,
         traversal_cache_size=100,
-        traversal_cache_ttl=3600
+        traversal_cache_ttl=3600,
     )
 
 
@@ -95,7 +96,7 @@ def mock_store_manager():
 @pytest.fixture
 def cache_manager(event_system, cache_config, mock_store_manager):
     """Create a cache manager instance."""
-    with patch('graph_context.caching.cache_manager.CacheStoreManager', return_value=mock_store_manager):
+    with patch("graph_context.caching.cache_manager.CacheStoreManager", return_value=mock_store_manager):
         manager = CacheManager(config=cache_config, event_system=event_system)
         return manager
 
@@ -113,7 +114,7 @@ async def test_entity_caching(cache_manager, mock_store_manager):
     context = EventContext(
         event=GraphEvent.ENTITY_READ,
         data={"entity_id": entity_id, "result": entity_data},
-        metadata=EventMetadata(entity_type="person")
+        metadata=EventMetadata(entity_type="person"),
     )
     await cache_manager.handle_event(context)
 
@@ -125,11 +126,7 @@ async def test_entity_caching(cache_manager, mock_store_manager):
     assert call_args[1].value == entity_data
 
     # Setup cache hit
-    store.get.return_value = CacheEntry(
-        value=entity_data,
-        created_at=datetime.now(UTC),
-        entity_type="person"
-    )
+    store.get.return_value = CacheEntry(value=entity_data, created_at=datetime.now(UTC), entity_type="person")
 
     # Test cache hit
     await cache_manager.handle_event(context)
@@ -137,9 +134,7 @@ async def test_entity_caching(cache_manager, mock_store_manager):
 
     # Test cache invalidation
     context = EventContext(
-        event=GraphEvent.ENTITY_WRITE,
-        data={"entity_id": entity_id},
-        metadata=EventMetadata(entity_type="person")
+        event=GraphEvent.ENTITY_WRITE, data={"entity_id": entity_id}, metadata=EventMetadata(entity_type="person")
     )
     await cache_manager.handle_event(context)
     store.delete.assert_awaited_once_with(entity_id)
@@ -150,12 +145,7 @@ async def test_relation_caching(cache_manager, mock_store_manager):
     """Test relation caching behavior."""
     # Setup
     relation_id = "test_relation"
-    relation_data = {
-        "id": relation_id,
-        "type": "knows",
-        "start_id": "entity1",
-        "end_id": "entity2"
-    }
+    relation_data = {"id": relation_id, "type": "knows", "start_id": "entity1", "end_id": "entity2"}
     store = mock_store_manager.get_relation_store()
     store.get.return_value = None  # First call returns cache miss
 
@@ -163,7 +153,7 @@ async def test_relation_caching(cache_manager, mock_store_manager):
     context = EventContext(
         event=GraphEvent.RELATION_READ,
         data={"relation_id": relation_id, "result": relation_data},
-        metadata=EventMetadata(relation_type="knows")
+        metadata=EventMetadata(relation_type="knows"),
     )
     await cache_manager.handle_event(context)
 
@@ -175,11 +165,7 @@ async def test_relation_caching(cache_manager, mock_store_manager):
     assert call_args[1].value == relation_data
 
     # Setup cache hit
-    store.get.return_value = CacheEntry(
-        value=relation_data,
-        created_at=datetime.now(UTC),
-        relation_type="knows"
-    )
+    store.get.return_value = CacheEntry(value=relation_data, created_at=datetime.now(UTC), relation_type="knows")
 
     # Test cache hit
     await cache_manager.handle_event(context)
@@ -189,7 +175,7 @@ async def test_relation_caching(cache_manager, mock_store_manager):
     context = EventContext(
         event=GraphEvent.RELATION_WRITE,
         data={"relation_id": relation_id},
-        metadata=EventMetadata(relation_type="knows")
+        metadata=EventMetadata(relation_type="knows"),
     )
     await cache_manager.handle_event(context)
     store.delete.assert_awaited_once_with(relation_id)
@@ -205,10 +191,7 @@ async def test_query_caching(cache_manager, mock_store_manager):
     store.get.return_value = None  # First call returns cache miss
 
     # Test cache miss
-    context = EventContext(
-        event=GraphEvent.QUERY_EXECUTED,
-        data={"query_hash": query_hash, "result": query_results}
-    )
+    context = EventContext(event=GraphEvent.QUERY_EXECUTED, data={"query_hash": query_hash, "result": query_results})
     await cache_manager.handle_event(context)
 
     # Verify cache set
@@ -219,11 +202,7 @@ async def test_query_caching(cache_manager, mock_store_manager):
     assert call_args[1].value == query_results
 
     # Setup cache hit
-    store.get.return_value = CacheEntry(
-        value=query_results,
-        created_at=datetime.now(UTC),
-        query_hash=query_hash
-    )
+    store.get.return_value = CacheEntry(value=query_results, created_at=datetime.now(UTC), query_hash=query_hash)
 
     # Test cache hit
     await cache_manager.handle_event(context)
@@ -241,8 +220,7 @@ async def test_traversal_caching(cache_manager, mock_store_manager):
 
     # Test cache miss
     context = EventContext(
-        event=GraphEvent.TRAVERSAL_EXECUTED,
-        data={"traversal_hash": traversal_hash, "result": traversal_results}
+        event=GraphEvent.TRAVERSAL_EXECUTED, data={"traversal_hash": traversal_hash, "result": traversal_results}
     )
     await cache_manager.handle_event(context)
 
@@ -255,9 +233,7 @@ async def test_traversal_caching(cache_manager, mock_store_manager):
 
     # Setup cache hit
     store.get.return_value = CacheEntry(
-        value=traversal_results,
-        created_at=datetime.now(UTC),
-        query_hash=traversal_hash
+        value=traversal_results, created_at=datetime.now(UTC), query_hash=traversal_hash
     )
 
     # Test cache hit
@@ -289,16 +265,12 @@ async def test_cache_metrics(cache_manager, mock_store_manager):
     context = EventContext(
         event=GraphEvent.ENTITY_READ,
         data={"entity_id": entity_id, "result": entity_data},
-        metadata=EventMetadata(entity_type="person")
+        metadata=EventMetadata(entity_type="person"),
     )
     await cache_manager.handle_event(context)
 
     # Test cache hit
-    store.get.return_value = CacheEntry(
-        value=entity_data,
-        created_at=datetime.now(UTC),
-        entity_type="person"
-    )
+    store.get.return_value = CacheEntry(value=entity_data, created_at=datetime.now(UTC), entity_type="person")
     await cache_manager.handle_event(context)
 
     # Verify metrics

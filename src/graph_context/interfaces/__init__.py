@@ -1,4 +1,4 @@
 """Graph context interfaces."""
 from .store import GraphStore
 
-__all__ = ['GraphStore']
+__all__ = ["GraphStore"]

@@ -1,24 +1,33 @@
 """Integration tests for the cached graph context implementation."""
 
-from typing import Dict, Any, Optional, List, AsyncGenerator
 import asyncio
 import logging
-import pytest
-from unittest.mock import AsyncMock, Mock, patch, call
-from datetime import datetime, UTC
-import types
+from datetime import UTC, datetime
+from typing import AsyncGenerator, List
+from unittest.mock import AsyncMock, Mock
 
-from graph_context.caching.cached_context import CachedGraphContext, CacheTransactionManager
+import pytest
+
 from graph_context.caching.cache_manager import CacheManager
 from graph_context.caching.cache_store import CacheEntry
-from graph_context.event_system import EventSystem, GraphEvent, EventContext, EventMetadata
+from graph_context.caching.cached_context import CachedGraphContext
 from graph_context.context_base import BaseGraphContext
-from graph_context.types.type_base import Entity, Relation, EntityType, PropertyDefinition, RelationType
-from graph_context.exceptions import SchemaError, EntityNotFoundError, RelationNotFoundError, TransactionError
+from graph_context.event_system import EventContext, EventMetadata, GraphEvent
+from graph_context.exceptions import (
+    EntityNotFoundError,
+    RelationNotFoundError,
+    TransactionError,
+)
+from graph_context.types.type_base import (
+    Entity,
+    EntityType,
+    PropertyDefinition,
+    RelationType,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger('graph_context.caching.cached_context')
+logger = logging.getLogger("graph_context.caching.cached_context")
 logger.setLevel(logging.DEBUG)
 
 
@@ -28,35 +37,39 @@ async def base_context() -> AsyncGenerator[BaseGraphContext, None]:
     context = BaseGraphContext()
 
     # Register standard entity and relation types
-    await context.register_entity_type(EntityType(
-        name="person",
-        properties={
-            "name": PropertyDefinition(type="string", required=True),
-            "age": PropertyDefinition(type="integer", required=False)
-        }
-    ))
+    await context.register_entity_type(
+        EntityType(
+            name="person",
+            properties={
+                "name": PropertyDefinition(type="string", required=True),
+                "age": PropertyDefinition(type="integer", required=False),
+            },
+        )
+    )
 
-    await context.register_relation_type(RelationType(
-        name="knows",
-        from_types=["person"],
-        to_types=["person"],
-        properties={
-            "since": PropertyDefinition(type="string", required=False)
-        }
-    ))
+    await context.register_relation_type(
+        RelationType(
+            name="knows",
+            from_types=["person"],
+            to_types=["person"],
+            properties={"since": PropertyDefinition(type="string", required=False)},
+        )
+    )
 
     yield context
     await context.cleanup()
 
 
 @pytest.fixture
-async def transaction(base_context: BaseGraphContext) -> AsyncGenerator[BaseGraphContext, None]:
+async def transaction(
+    base_context: BaseGraphContext,
+) -> AsyncGenerator[BaseGraphContext, None]:
     """Create and manage a transaction for tests."""
     await base_context.begin_transaction()
     yield base_context
     try:
         await base_context.commit_transaction()
-    except:
+    except Exception:
         await base_context.rollback_transaction()
 
 
@@ -90,14 +103,14 @@ async def test_entity_caching(cached_context, transaction):
     # Create a test entity in the base context first
     properties = {"name": "Test", "age": 30}
     entity_id = await cached_context._base.create_entity("person", properties)
-    entity = await cached_context._base.get_entity(entity_id)  # Get the actual entity format
+    entity = await cached_context._base.get_entity(
+        entity_id
+    )  # Get the actual entity format
 
     # Test cache hit
     store = cached_context._cache_manager.store_manager.get_entity_store()
     store.get.return_value = CacheEntry(
-        value=entity,
-        created_at=datetime.now(UTC),
-        entity_type="person"
+        value=entity, created_at=datetime.now(UTC), entity_type="person"
     )
 
     result = await cached_context.get_entity(entity_id)
@@ -118,24 +131,23 @@ async def test_entity_caching(cached_context, transaction):
 async def test_relation_caching(cached_context, transaction):
     """Test relation caching behavior."""
     # Create test entities first
-    from_entity_id = await cached_context._base.create_entity("person", {"name": "Person A"})
-    to_entity_id = await cached_context._base.create_entity("person", {"name": "Person B"})
+    from_entity_id = await cached_context._base.create_entity(
+        "person", {"name": "Person A"}
+    )
+    to_entity_id = await cached_context._base.create_entity(
+        "person", {"name": "Person B"}
+    )
 
     # Create the test relation
     relation_id = await cached_context._base.create_relation(
-        "knows",
-        from_entity_id,
-        to_entity_id,
-        {"since": "2024"}
+        "knows", from_entity_id, to_entity_id, {"since": "2024"}
     )
     relation = await cached_context._base.get_relation(relation_id)
 
     # Test cache hit
     store = cached_context._cache_manager.store_manager.get_relation_store()
     store.get.return_value = CacheEntry(
-        value=relation,
-        created_at=datetime.now(UTC),
-        relation_type="knows"
+        value=relation, created_at=datetime.now(UTC), relation_type="knows"
     )
 
     result = await cached_context.get_relation(relation_id)
@@ -156,8 +168,8 @@ async def test_relation_caching(cached_context, transaction):
 async def test_query_caching(cached_context, transaction):
     """Test query caching behavior."""
     # Create some test entities
-    entity1_id = await cached_context._base.create_entity("person", {"name": "Person A", "age": 30})
-    entity2_id = await cached_context._base.create_entity("person", {"name": "Person B", "age": 25})
+    await cached_context._base.create_entity("person", {"name": "Person A", "age": 30})
+    await cached_context._base.create_entity("person", {"name": "Person B", "age": 25})
 
     # Define query and get actual results
     query_spec = {"entity_type": "person"}
@@ -170,9 +182,7 @@ async def test_query_caching(cached_context, transaction):
     # Test cache hit
     store = cached_context._cache_manager.store_manager.get_query_store()
     store.get.return_value = CacheEntry(
-        value=results,
-        created_at=datetime.now(UTC),
-        query_hash=query_hash
+        value=results, created_at=datetime.now(UTC), query_hash=query_hash
     )
 
     query_results = await cached_context.query(query_spec)
@@ -193,9 +203,15 @@ async def test_query_caching(cached_context, transaction):
 async def test_traversal_caching(cached_context, transaction):
     """Test traversal caching behavior."""
     # Create test entities and relations
-    start_entity_id = await cached_context._base.create_entity("person", {"name": "Start Person"})
-    target1_id = await cached_context._base.create_entity("person", {"name": "Target 1"})
-    target2_id = await cached_context._base.create_entity("person", {"name": "Target 2"})
+    start_entity_id = await cached_context._base.create_entity(
+        "person", {"name": "Start Person"}
+    )
+    target1_id = await cached_context._base.create_entity(
+        "person", {"name": "Target 1"}
+    )
+    target2_id = await cached_context._base.create_entity(
+        "person", {"name": "Target 2"}
+    )
 
     # Create relations
     await cached_context._base.create_relation("knows", start_entity_id, target1_id)
@@ -205,7 +221,7 @@ async def test_traversal_caching(cached_context, transaction):
     traversal_spec = {
         "max_depth": 2,
         "relation_types": ["knows"],
-        "direction": "outbound"
+        "direction": "outbound",
     }
     results = await cached_context._base.traverse(start_entity_id, traversal_spec)
 
@@ -216,9 +232,7 @@ async def test_traversal_caching(cached_context, transaction):
     # Test cache hit
     store = cached_context._cache_manager.store_manager.get_traversal_store()
     store.get.return_value = CacheEntry(
-        value=results,
-        created_at=datetime.now(UTC),
-        query_hash=traversal_hash
+        value=results, created_at=datetime.now(UTC), query_hash=traversal_hash
     )
 
     traversal_results = await cached_context.traverse(start_entity_id, traversal_spec)
@@ -247,21 +261,27 @@ async def test_cache_invalidation(cached_context, transaction):
     # Test entity cache invalidation
     properties = {"name": "Updated"}
     await cached_context.update_entity(entity_id, properties)
-    cached_context._cache_manager.store_manager.get_entity_store().delete.assert_called_once_with(entity_id)
+    cached_context._cache_manager.store_manager.get_entity_store().delete.assert_called_once_with(
+        entity_id
+    )
 
     # Test relation cache invalidation
     properties = {"since": "2024"}
     await cached_context.update_relation(relation_id, properties)
-    cached_context._cache_manager.store_manager.get_relation_store().delete.assert_called_once_with(relation_id)
+    cached_context._cache_manager.store_manager.get_relation_store().delete.assert_called_once_with(
+        relation_id
+    )
 
     # Verify events were handled
     handle_event_mock = cached_context._cache_manager.handle_event
     assert any(
-        call.args[0].event == GraphEvent.ENTITY_WRITE and call.args[0].data.get("entity_id") == entity_id
+        call.args[0].event == GraphEvent.ENTITY_WRITE
+        and call.args[0].data.get("entity_id") == entity_id
         for call in handle_event_mock.call_args_list
     ), "ENTITY_WRITE event not found for updated entity"
     assert any(
-        call.args[0].event == GraphEvent.RELATION_WRITE and call.args[0].data.get("relation_id") == relation_id
+        call.args[0].event == GraphEvent.RELATION_WRITE
+        and call.args[0].data.get("relation_id") == relation_id
         for call in handle_event_mock.call_args_list
     ), "RELATION_WRITE event not found for updated relation"
 
@@ -271,14 +291,18 @@ async def test_error_handling(cached_context, transaction):
     """Test error handling in cache operations."""
     # Test entity not found
     entity_id = "nonexistent"
-    cached_context._cache_manager.store_manager.get_entity_store().get.return_value = None
+    cached_context._cache_manager.store_manager.get_entity_store().get.return_value = (
+        None
+    )
 
     with pytest.raises(EntityNotFoundError):
         await cached_context.get_entity(entity_id)
 
     # Test relation not found
     relation_id = "nonexistent"
-    cached_context._cache_manager.store_manager.get_relation_store().get.return_value = None
+    cached_context._cache_manager.store_manager.get_relation_store().get.return_value = (
+        None
+    )
 
     with pytest.raises(RelationNotFoundError):
         await cached_context.get_relation(relation_id)
@@ -298,9 +322,7 @@ async def test_cache_enable_disable(cached_context, transaction):
     # Setup initial enabled store
     store_manager.get_entity_store = Mock(return_value=entity_store)
     entity_store.get.return_value = CacheEntry(
-        value=entity,
-        created_at=datetime.now(UTC),
-        entity_type="person"
+        value=entity, created_at=datetime.now(UTC), entity_type="person"
     )
 
     # Test with cache enabled - should use cache
@@ -317,9 +339,7 @@ async def test_cache_enable_disable(cached_context, transaction):
     cached_context.enable_caching()
     entity_store.get.reset_mock()
     entity_store.get.return_value = CacheEntry(
-        value=entity,
-        created_at=datetime.now(UTC),
-        entity_type="person"
+        value=entity, created_at=datetime.now(UTC), entity_type="person"
     )
 
     result = await cached_context.get_entity(entity_id)
@@ -352,7 +372,7 @@ async def test_transaction_isolation(cached_context):
     # Mock cache hit with initial value
     entity_store.get.return_value = CacheEntry(
         value=Entity(id=entity_id, type="person", properties={"name": "Initial"}),
-        created_at=datetime.now(UTC)
+        created_at=datetime.now(UTC),
     )
 
     # Start new transaction
@@ -388,7 +408,7 @@ async def test_transaction_commit_effects(cached_context):
     # Mock cache hit with initial value
     entity_store.get.return_value = CacheEntry(
         value=Entity(id=entity_id, type="person", properties={"name": "Initial"}),
-        created_at=datetime.now(UTC)
+        created_at=datetime.now(UTC),
     )
 
     # Start new transaction
@@ -403,7 +423,7 @@ async def test_transaction_commit_effects(cached_context):
     # Update mock for the new value
     entity_store.get.return_value = CacheEntry(
         value=Entity(id=entity_id, type="person", properties={"name": "Updated"}),
-        created_at=datetime.now(UTC)
+        created_at=datetime.now(UTC),
     )
 
     # Verify entity remains updated after commit
@@ -420,9 +440,9 @@ async def test_single_entity_operations(cached_context):
     # Create multiple entities
     entity_ids = []
     for i in range(3):
-        entity_id = await cached_context.create_entity("person", {
-            "name": f"Person {i}"  # Ensure name is provided
-        })
+        entity_id = await cached_context.create_entity(
+            "person", {"name": f"Person {i}"}  # Ensure name is provided
+        )
         entity_ids.append(entity_id)
 
     # Verify entities were created
@@ -460,17 +480,16 @@ async def test_single_relation_operations(cached_context):
     # Create test entities first
     person_ids = []
     for i in range(3):
-        person_id = await cached_context.create_entity("person", {"name": f"Person {i}"})
+        person_id = await cached_context.create_entity(
+            "person", {"name": f"Person {i}"}
+        )
         person_ids.append(person_id)
 
     # Create relations
     relation_ids = []
     for i in range(1, 3):
         relation_id = await cached_context.create_relation(
-            "knows",
-            person_ids[0],
-            person_ids[i],
-            {"since": str(2020 + i)}
+            "knows", person_ids[0], person_ids[i], {"since": str(2020 + i)}
         )
         relation_ids.append(relation_id)
 
@@ -514,11 +533,11 @@ async def test_cache_behavior_during_schema_changes(cached_context):
     assert entity.properties["name"] == "Test"
 
     # Simulate schema modification event
-    await cached_context._cache_manager.handle_event(EventContext(
-        event=GraphEvent.SCHEMA_MODIFIED,
-        data={},
-        metadata=EventMetadata()
-    ))
+    await cached_context._cache_manager.handle_event(
+        EventContext(
+            event=GraphEvent.SCHEMA_MODIFIED, data={}, metadata=EventMetadata()
+        )
+    )
 
     # Get entity again - should come from base context
     entity = await cached_context.get_entity(entity_id)
@@ -534,7 +553,9 @@ async def test_update_entity_failure(cached_context, transaction):
     properties = {"name": "Failed Update"}
 
     # Reset mocks before the call
-    entity_store_delete_mock = cached_context._cache_manager.store_manager.get_entity_store().delete
+    entity_store_delete_mock = (
+        cached_context._cache_manager.store_manager.get_entity_store().delete
+    )
     handle_event_mock = cached_context._cache_manager.handle_event
     entity_store_delete_mock.reset_mock()
     handle_event_mock.reset_mock()
@@ -546,8 +567,10 @@ async def test_update_entity_failure(cached_context, transaction):
     # Verify cache invalidation and event handling were NOT called
     entity_store_delete_mock.assert_not_called()
     write_event_calls = [
-        c for c in handle_event_mock.call_args_list
-        if isinstance(c.args[0], EventContext) and c.args[0].event == GraphEvent.ENTITY_WRITE
+        c
+        for c in handle_event_mock.call_args_list
+        if isinstance(c.args[0], EventContext)
+        and c.args[0].event == GraphEvent.ENTITY_WRITE
     ]
     assert not write_event_calls
 
@@ -558,7 +581,9 @@ async def test_delete_entity_failure(cached_context, transaction):
     entity_id = "non_existent_entity"
 
     # Reset mocks before the call
-    entity_store_delete_mock = cached_context._cache_manager.store_manager.get_entity_store().delete
+    entity_store_delete_mock = (
+        cached_context._cache_manager.store_manager.get_entity_store().delete
+    )
     handle_event_mock = cached_context._cache_manager.handle_event
     entity_store_delete_mock.reset_mock()
     handle_event_mock.reset_mock()
@@ -572,8 +597,10 @@ async def test_delete_entity_failure(cached_context, transaction):
     # Verify cache invalidation and event handling were NOT called
     entity_store_delete_mock.assert_not_called()
     delete_event_calls = [
-        c for c in handle_event_mock.call_args_list
-        if isinstance(c.args[0], EventContext) and c.args[0].event == GraphEvent.ENTITY_DELETE
+        c
+        for c in handle_event_mock.call_args_list
+        if isinstance(c.args[0], EventContext)
+        and c.args[0].event == GraphEvent.ENTITY_DELETE
     ]
     assert not delete_event_calls
 
@@ -585,7 +612,9 @@ async def test_update_relation_failure(cached_context, transaction):
     properties = {"since": "never"}
 
     # Reset mocks before the call
-    relation_store_delete_mock = cached_context._cache_manager.store_manager.get_relation_store().delete
+    relation_store_delete_mock = (
+        cached_context._cache_manager.store_manager.get_relation_store().delete
+    )
     handle_event_mock = cached_context._cache_manager.handle_event
     relation_store_delete_mock.reset_mock()
     handle_event_mock.reset_mock()
@@ -599,8 +628,10 @@ async def test_update_relation_failure(cached_context, transaction):
     # Verify cache invalidation and event handling were NOT called
     relation_store_delete_mock.assert_not_called()
     write_event_calls = [
-        c for c in handle_event_mock.call_args_list
-        if isinstance(c.args[0], EventContext) and c.args[0].event == GraphEvent.RELATION_WRITE
+        c
+        for c in handle_event_mock.call_args_list
+        if isinstance(c.args[0], EventContext)
+        and c.args[0].event == GraphEvent.RELATION_WRITE
     ]
     assert not write_event_calls
 
@@ -611,7 +642,9 @@ async def test_delete_relation_failure(cached_context, transaction):
     relation_id = "non_existent_relation"
 
     # Reset mocks before the call
-    relation_store_delete_mock = cached_context._cache_manager.store_manager.get_relation_store().delete
+    relation_store_delete_mock = (
+        cached_context._cache_manager.store_manager.get_relation_store().delete
+    )
     handle_event_mock = cached_context._cache_manager.handle_event
     relation_store_delete_mock.reset_mock()
     handle_event_mock.reset_mock()
@@ -625,8 +658,10 @@ async def test_delete_relation_failure(cached_context, transaction):
     # Verify cache invalidation and event handling were NOT called
     relation_store_delete_mock.assert_not_called()
     delete_event_calls = [
-        c for c in handle_event_mock.call_args_list
-        if isinstance(c.args[0], EventContext) and c.args[0].event == GraphEvent.RELATION_DELETE
+        c
+        for c in handle_event_mock.call_args_list
+        if isinstance(c.args[0], EventContext)
+        and c.args[0].event == GraphEvent.RELATION_DELETE
     ]
     assert not delete_event_calls
 
@@ -655,29 +690,33 @@ async def test_transaction_manager_errors(cached_context):
         call.args[0].event == GraphEvent.TRANSACTION_BEGIN
         for call in cached_context._cache_manager.handle_event.call_args_list
     )
-    cached_context._cache_manager.handle_event.reset_mock() # Reset mock for next checks
+    cached_context._cache_manager.handle_event.reset_mock()  # Reset mock for next checks
 
     # Test begin while already in transaction
     with pytest.raises(TransactionError, match="Transaction already in progress"):
         await transaction_manager.begin_transaction()
 
     # Test check_transaction(required=False) while in transaction
-    with pytest.raises(TransactionError, match="Operation cannot be performed in a transaction"):
+    with pytest.raises(
+        TransactionError, match="Operation cannot be performed in a transaction"
+    ):
         transaction_manager.check_transaction(required=False)
 
     # Test check_transaction(required=True) passes while in transaction
-    transaction_manager.check_transaction(required=True) # Should not raise
+    transaction_manager.check_transaction(required=True)  # Should not raise
 
     # Rollback to clean up state
     await transaction_manager.rollback_transaction()
     assert not transaction_manager.is_in_transaction()
 
     # Test check_transaction(required=True) fails when not in transaction
-    with pytest.raises(TransactionError, match="Operation requires an active transaction"):
+    with pytest.raises(
+        TransactionError, match="Operation requires an active transaction"
+    ):
         transaction_manager.check_transaction(required=True)
 
     # Test check_transaction(required=False) passes when not in transaction
-    transaction_manager.check_transaction(required=False) # Should not raise
+    transaction_manager.check_transaction(required=False)  # Should not raise
 
 
 @pytest.mark.asyncio
@@ -693,7 +732,9 @@ async def test_concurrent_operations(cached_context):
     # Create test entities within the transaction
     entity_ids = []
     for i in range(3):
-        entity_id = await cached_context.create_entity("person", {"name": f"Person {i}"})
+        entity_id = await cached_context.create_entity(
+            "person", {"name": f"Person {i}"}
+        )
         entity_ids.append(entity_id)
 
     # Define concurrent update operations (without internal transaction mgmt)
@@ -701,10 +742,12 @@ async def test_concurrent_operations(cached_context):
         await cached_context.update_entity(entity_id, {"name": name})
 
     # Run concurrent updates within the transaction
-    await asyncio.gather(*[
-        update_entity(entity_id, f"Updated {i}")
-        for i, entity_id in enumerate(entity_ids)
-    ])
+    await asyncio.gather(
+        *[
+            update_entity(entity_id, f"Updated {i}")
+            for i, entity_id in enumerate(entity_ids)
+        ]
+    )
 
     # Commit the transaction
     await cached_context.commit_transaction()
@@ -715,8 +758,10 @@ async def test_concurrent_operations(cached_context):
             idx = entity_ids.index(entity_id)
             # Simulate fetching the committed state
             return CacheEntry(
-                value=Entity(id=entity_id, type="person", properties={"name": f"Updated {idx}"}),
-                created_at=datetime.now(UTC)
+                value=Entity(
+                    id=entity_id, type="person", properties={"name": f"Updated {idx}"}
+                ),
+                created_at=datetime.now(UTC),
             )
         except ValueError:
             return None
@@ -726,7 +771,7 @@ async def test_concurrent_operations(cached_context):
     # Verify all updates were applied (fetch after commit)
     for i, entity_id in enumerate(entity_ids):
         entity = await cached_context.get_entity(entity_id)
-        assert entity is not None # Ensure entity is found
+        assert entity is not None  # Ensure entity is found
         assert entity.properties["name"] == f"Updated {i}"
 
 
@@ -782,23 +827,25 @@ async def test_cache_operations_with_disabled_cache(cached_context):
 @pytest.mark.asyncio
 async def test_initialize_event_subscriptions():
     """Test that _initialize subscribes cache manager to all relevant events when _events exists."""
-    from graph_context.caching.cached_context import CachedGraphContext
-    from graph_context.event_system import EventSystem, GraphEvent
     from unittest.mock import AsyncMock, Mock
 
+    from graph_context.caching.cached_context import CachedGraphContext
+    from graph_context.event_system import EventSystem
+
     # Create a mock base context that explicitly HAS an _events attribute
-    events = EventSystem() # Use a real event system
+    events = EventSystem()  # Use a real event system
     base_context = Mock()
-    base_context._events = events # Assign the real event system
+    base_context._events = events  # Assign the real event system
     cache_manager = Mock()
     cache_manager.handle_event = AsyncMock()
 
     # Patch the subscribe method to track calls
     subscribe_calls = []
-    orig_subscribe = events.subscribe
+
     async def tracking_subscribe(event, handler):
         subscribe_calls.append((event, handler))
         # No need to call orig_subscribe here for mock tracking
+
     events.subscribe = tracking_subscribe
 
     # Create the cached context (do not set _initialized)
@@ -808,13 +855,6 @@ async def test_initialize_event_subscriptions():
     # Call _initialize directly - this should trigger subscriptions
     await context._initialize()
 
-    # Check that subscribe was called for relevant events
-    expected_events = [
-        GraphEvent.ENTITY_READ,
-        GraphEvent.ENTITY_WRITE,
-        # ... (include all expected events as before) ...
-        GraphEvent.TRANSACTION_ROLLBACK,
-    ]
     subscribed_events = [call[0] for call in subscribe_calls]
 
     # Assert that subscribe was called at least once
@@ -829,14 +869,14 @@ async def test_initialize_event_subscriptions():
     # Test calling initialize again does nothing
     subscribe_calls.clear()
     await context._initialize()
-    assert len(subscribe_calls) == 0 # No new subscriptions
+    assert len(subscribe_calls) == 0  # No new subscriptions
 
 
 @pytest.mark.asyncio
 async def test_initialization_with_real_context(base_context):
     """Test initialization with a real base context."""
-    from graph_context.caching.cached_context import CachedGraphContext
     from graph_context.caching.cache_manager import CacheManager
+    from graph_context.caching.cached_context import CachedGraphContext
 
     # Create a real cache manager
     cache_manager = CacheManager()
@@ -854,6 +894,7 @@ async def test_initialization_with_real_context(base_context):
     with pytest.raises(EntityNotFoundError):
         await context.get_entity("any-id")
 
+
 @pytest.mark.asyncio
 async def test_base_context_events_attribute():
     """Test the hasattr branch for _events in base context."""
@@ -866,7 +907,7 @@ async def test_base_context_events_attribute():
 
     # Test when base context has _events
     base_context = Mock()
-    delattr(base_context, '_events')  # Ensure no _events to start
+    delattr(base_context, "_events")  # Ensure no _events to start
     context = CachedGraphContext(base_context, Mock())
     await context._initialize()  # Should pass without error
 
@@ -874,12 +915,15 @@ async def test_base_context_events_attribute():
     base_context._events = Mock()
     await context._initialize()  # Should handle _events existence
 
+
 @pytest.mark.asyncio
 async def test_create_entity_caching_outside_transaction(cached_context):
     """Test entity created within a transaction is NOT cached immediately."""
     properties = {"name": "Cache Me Tx", "age": 40}
     entity_type = "person"
-    entity_store_set_mock = cached_context._cache_manager.store_manager.get_entity_store().set
+    entity_store_set_mock = (
+        cached_context._cache_manager.store_manager.get_entity_store().set
+    )
     handle_event_mock = cached_context._cache_manager.handle_event
     entity_store_set_mock.reset_mock()
     handle_event_mock.reset_mock()
@@ -897,7 +941,8 @@ async def test_create_entity_caching_outside_transaction(cached_context):
     # Verify event was handled
     # (Event handling happens regardless of transaction state in create_entity)
     assert any(
-        call.args[0].event == GraphEvent.ENTITY_WRITE and call.args[0].data.get("entity_id") == entity_id
+        call.args[0].event == GraphEvent.ENTITY_WRITE
+        and call.args[0].data.get("entity_id") == entity_id
         for call in handle_event_mock.call_args_list
     ), "ENTITY_WRITE event not found for created entity"
 
@@ -917,7 +962,9 @@ async def test_create_relation_caching_outside_transaction(cached_context):
     # Test: Create relation within a new transaction
     relation_type = "knows"
     properties = {"since": "yesterday tx"}
-    relation_store_set_mock = cached_context._cache_manager.store_manager.get_relation_store().set
+    relation_store_set_mock = (
+        cached_context._cache_manager.store_manager.get_relation_store().set
+    )
     handle_event_mock = cached_context._cache_manager.handle_event
     relation_store_set_mock.reset_mock()
     handle_event_mock.reset_mock()
@@ -926,7 +973,9 @@ async def test_create_relation_caching_outside_transaction(cached_context):
     await cached_context.begin_transaction()
 
     # Create relation (within the explicit transaction)
-    relation_id = await cached_context.create_relation(relation_type, from_id, to_id, properties)
+    relation_id = await cached_context.create_relation(
+        relation_type, from_id, to_id, properties
+    )
     assert relation_id is not None
 
     # Verify it was NOT cached immediately because we are in a transaction
@@ -934,7 +983,8 @@ async def test_create_relation_caching_outside_transaction(cached_context):
 
     # Verify event was handled
     assert any(
-        call.args[0].event == GraphEvent.RELATION_WRITE and call.args[0].data.get("relation_id") == relation_id
+        call.args[0].event == GraphEvent.RELATION_WRITE
+        and call.args[0].data.get("relation_id") == relation_id
         for call in handle_event_mock.call_args_list
     ), "RELATION_WRITE event not found for created relation"
 
@@ -948,9 +998,13 @@ async def test_delete_relation_success_outside_transaction(cached_context, trans
     # Create entities and relation first (within the same transaction)
     from_id = await cached_context.create_entity("person", {"name": "From Person Del"})
     to_id = await cached_context.create_entity("person", {"name": "To Person Del"})
-    relation_id = await cached_context.create_relation("knows", from_id, to_id, {"since": "long ago"})
+    relation_id = await cached_context.create_relation(
+        "knows", from_id, to_id, {"since": "long ago"}
+    )
 
-    relation_store_delete_mock = cached_context._cache_manager.store_manager.get_relation_store().delete
+    relation_store_delete_mock = (
+        cached_context._cache_manager.store_manager.get_relation_store().delete
+    )
     handle_event_mock = cached_context._cache_manager.handle_event
     relation_store_delete_mock.reset_mock()
     handle_event_mock.reset_mock()
@@ -964,6 +1018,7 @@ async def test_delete_relation_success_outside_transaction(cached_context, trans
 
     # Verify event was handled
     assert any(
-        call.args[0].event == GraphEvent.RELATION_DELETE and call.args[0].data.get("relation_id") == relation_id
+        call.args[0].event == GraphEvent.RELATION_DELETE
+        and call.args[0].data.get("relation_id") == relation_id
         for call in handle_event_mock.call_args_list
     ), "RELATION_DELETE event not found for deleted relation"

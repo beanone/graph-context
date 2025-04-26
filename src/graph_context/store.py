@@ -3,10 +3,11 @@ Graph store factory.
 
 This module provides a factory for creating store instances based on configuration.
 """
-from dataclasses import dataclass
-from typing import Dict, Any, Type
-import os
+
 import json
+import os
+from dataclasses import dataclass
+from typing import Any, ClassVar, Dict, Type
 
 from .interfaces.store import GraphStore
 from .stores.memory_store import InMemoryGraphStore
@@ -15,6 +16,7 @@ from .stores.memory_store import InMemoryGraphStore
 @dataclass
 class StoreConfig:
     """Internal configuration for graph store."""
+
     type: str
     config: Dict[str, Any]
 
@@ -22,14 +24,14 @@ class StoreConfig:
 class GraphStoreFactory:
     """Factory for creating GraphStore instances from configuration."""
 
-    _store_types: Dict[str, Type[GraphStore]] = {
-        "memory": InMemoryGraphStore
-    }
-    _CONFIG_ENV_VAR = "GRAPH_STORE_CONFIG"
-    _CONFIG_FILE_PATH = "graph_store_config.json"
+    _store_types: ClassVar[Dict[str, Type[GraphStore]]] = {"memory": InMemoryGraphStore}
+    _CONFIG_ENV_VAR: ClassVar[str] = "GRAPH_STORE_CONFIG"
+    _CONFIG_FILE_PATH: ClassVar[str] = "graph_store_config.json"
 
     @classmethod
-    def register_store_type(cls, store_type: str, store_class: Type[GraphStore]) -> None:
+    def register_store_type(
+        cls, store_type: str, store_class: Type[GraphStore]
+    ) -> None:
         """Register a new store type."""
         cls._store_types[store_type] = store_class
 
@@ -57,20 +59,17 @@ class GraphStoreFactory:
             try:
                 config_dict = json.loads(config_str)
                 return StoreConfig(**config_dict)
-            except (json.JSONDecodeError, TypeError) as e:
-                raise ValueError(f"Invalid environment configuration: {e}")
+            except (json.JSONDecodeError, TypeError) as err:
+                raise ValueError(f"Invalid environment configuration: {err}") from err
 
         # Try configuration file
         if os.path.exists(cls._CONFIG_FILE_PATH):
             try:
-                with open(cls._CONFIG_FILE_PATH, 'r') as f:
+                with open(cls._CONFIG_FILE_PATH, "r") as f:
                     config_dict = json.load(f)
                 return StoreConfig(**config_dict)
-            except (json.JSONDecodeError, TypeError, OSError) as e:
-                raise ValueError(f"Invalid configuration file: {e}")
+            except (json.JSONDecodeError, TypeError, OSError) as err:
+                raise ValueError(f"Invalid configuration file: {err}") from err
 
         # Default to memory store
-        return StoreConfig(
-            type="memory",
-            config={}
-        )
+        return StoreConfig(type="memory", config={})

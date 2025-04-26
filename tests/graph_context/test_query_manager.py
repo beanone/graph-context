@@ -1,12 +1,13 @@
 """
 Tests for the QueryManager class.
 """
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from graph_context.context_base import QueryManager
 from graph_context.event_system import GraphEvent
-from graph_context.types.type_base import QuerySpec, TraversalSpec, Entity
+from graph_context.types.type_base import Entity, QuerySpec, TraversalSpec
 
 
 @pytest.fixture
@@ -35,10 +36,7 @@ def query_manager(mock_store, mock_events):
 @pytest.fixture
 def sample_entities():
     """Sample entities for testing."""
-    return [
-        MagicMock(spec=Entity),
-        MagicMock(spec=Entity)
-    ]
+    return [MagicMock(spec=Entity), MagicMock(spec=Entity)]
 
 
 class TestQueryManager:
@@ -59,10 +57,7 @@ class TestQueryManager:
         result = await query_manager.query(query_spec)
 
         mock_store.query.assert_called_once_with(query_spec)
-        mock_events.emit.assert_called_once_with(
-            GraphEvent.QUERY_EXECUTED,
-            query_spec=query_spec
-        )
+        mock_events.emit.assert_called_once_with(GraphEvent.QUERY_EXECUTED, query_spec=query_spec)
         assert result == sample_entities
 
     @pytest.mark.asyncio
@@ -76,8 +71,6 @@ class TestQueryManager:
 
         mock_store.traverse.assert_called_once_with(start_entity, traversal_spec)
         mock_events.emit.assert_called_once_with(
-            GraphEvent.TRAVERSAL_EXECUTED,
-            start_entity=start_entity,
-            traversal_spec=traversal_spec
+            GraphEvent.TRAVERSAL_EXECUTED, start_entity=start_entity, traversal_spec=traversal_spec
         )
         assert result == sample_entities

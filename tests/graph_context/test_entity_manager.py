@@ -1,12 +1,18 @@
 """
 Tests for the EntityManager class.
 """
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
-from graph_context.context_base import EntityManager, SchemaValidator, TransactionManager
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from graph_context.context_base import (
+    EntityManager,
+    SchemaValidator,
+    TransactionManager,
+)
 from graph_context.event_system import GraphEvent
-from graph_context.exceptions import EntityNotFoundError, ValidationError, SchemaError
+from graph_context.exceptions import EntityNotFoundError
 
 
 @pytest.fixture
@@ -59,10 +65,7 @@ def sample_entity():
     entity = MagicMock()
     entity.id = "entity-123"
     entity.type = "person"
-    entity.properties = {
-        "name": "John Doe",
-        "age": 30
-    }
+    entity.properties = {"name": "John Doe", "age": 30}
     return entity
 
 
@@ -72,10 +75,7 @@ def updated_entity():
     entity = MagicMock()
     entity.id = "entity-123"
     entity.type = "person"
-    entity.properties = {
-        "name": "Jane Doe",
-        "age": 32
-    }
+    entity.properties = {"name": "Jane Doe", "age": 32}
     return entity
 
 
@@ -84,7 +84,9 @@ class TestEntityManager:
 
     def test_init(self, mock_store, mock_events, mock_validator, mock_transaction):
         """Test EntityManager initialization."""
-        manager = EntityManager(mock_store, mock_events, mock_validator, mock_transaction)
+        manager = EntityManager(
+            mock_store, mock_events, mock_validator, mock_transaction
+        )
         assert manager._store is mock_store
         assert manager._events is mock_events
         assert manager._validator is mock_validator
@@ -113,8 +115,15 @@ class TestEntityManager:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_create_entity_success(self, entity_manager, mock_store, mock_validator,
-                                          mock_transaction, mock_events, sample_entity):
+    async def test_create_entity_success(
+        self,
+        entity_manager,
+        mock_store,
+        mock_validator,
+        mock_transaction,
+        mock_events,
+        sample_entity,
+    ):
         """Test create method successful execution."""
         entity_type = "person"
         entity_properties = {"name": "John Doe", "age": 30}
@@ -127,18 +136,25 @@ class TestEntityManager:
         result = await entity_manager.create(entity_type, entity_properties)
 
         mock_transaction.check_transaction.assert_called_once()
-        mock_validator.validate_entity.assert_called_once_with(entity_type, entity_properties)
+        mock_validator.validate_entity.assert_called_once_with(
+            entity_type, entity_properties
+        )
         mock_store.create_entity.assert_called_once_with(entity_type, validated_props)
         mock_events.emit.assert_called_once_with(
-            GraphEvent.ENTITY_WRITE,
-            entity_id=entity_id,
-            entity_type=entity_type
+            GraphEvent.ENTITY_WRITE, entity_id=entity_id, entity_type=entity_type
         )
         assert result == entity_id
 
     @pytest.mark.asyncio
-    async def test_update_entity_success(self, entity_manager, mock_store, mock_validator,
-                                          mock_transaction, mock_events, sample_entity):
+    async def test_update_entity_success(
+        self,
+        entity_manager,
+        mock_store,
+        mock_validator,
+        mock_transaction,
+        mock_events,
+        sample_entity,
+    ):
         """Test update method successful execution."""
         entity_id = "entity-123"
         entity_properties = {"name": "Jane Doe", "age": 32}
@@ -152,31 +168,32 @@ class TestEntityManager:
 
         mock_transaction.check_transaction.assert_called_once()
         mock_store.get_entity.assert_called_once_with(entity_id)
-        mock_validator.validate_entity.assert_called_once_with(sample_entity.type, entity_properties)
+        mock_validator.validate_entity.assert_called_once_with(
+            sample_entity.type, entity_properties
+        )
         mock_store.update_entity.assert_called_once_with(entity_id, validated_props)
         mock_events.emit.assert_called_once_with(
-            GraphEvent.ENTITY_WRITE,
-            entity_id=entity_id,
-            entity_type=sample_entity.type
+            GraphEvent.ENTITY_WRITE, entity_id=entity_id, entity_type=sample_entity.type
         )
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_update_entity_verifies_changes(self, entity_manager, mock_store, mock_validator,
-                                          mock_transaction, mock_events, sample_entity, updated_entity):
+    async def test_update_entity_verifies_changes(
+        self,
+        entity_manager,
+        mock_store,
+        mock_validator,
+        sample_entity,
+        updated_entity,
+    ):
         """Test update method actually changes the entity properties."""
         entity_id = "entity-123"
-        original_properties = {"name": "John Doe", "age": 30}
-        new_properties = {"name": "Jane Doe", "age": 32}
-        validated_props = {"name": "Jane Doe", "age": 32}
-
         # Setup initial entity
         mock_store.get_entity.side_effect = [sample_entity, updated_entity]
-        mock_validator.validate_entity.return_value = validated_props
         mock_store.update_entity.return_value = True
 
         # Perform update
-        result = await entity_manager.update(entity_id, new_properties)
+        result = await entity_manager.update(entity_id, updated_entity.properties)
         assert result is True
 
         # Verify the entity is updated by fetching it again
@@ -186,8 +203,15 @@ class TestEntityManager:
         assert mock_store.get_entity.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_update_entity_failed_operation(self, entity_manager, mock_store, mock_validator,
-                                          mock_transaction, mock_events, sample_entity):
+    async def test_update_entity_failed_operation(
+        self,
+        entity_manager,
+        mock_store,
+        mock_validator,
+        mock_transaction,
+        mock_events,
+        sample_entity,
+    ):
         """Test update method when update operation fails."""
         entity_id = "entity-123"
         entity_properties = {"name": "Jane Doe", "age": 32}
@@ -202,14 +226,18 @@ class TestEntityManager:
 
         mock_transaction.check_transaction.assert_called_once()
         mock_store.get_entity.assert_called_once_with(entity_id)
-        mock_validator.validate_entity.assert_called_once_with(sample_entity.type, entity_properties)
+        mock_validator.validate_entity.assert_called_once_with(
+            sample_entity.type, entity_properties
+        )
         mock_store.update_entity.assert_called_once_with(entity_id, validated_props)
         # Event should not be emitted on failed update
         mock_events.emit.assert_not_called()
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_update_entity_not_found(self, entity_manager, mock_store, mock_transaction, mock_validator, mock_events):
+    async def test_update_entity_not_found(
+        self, entity_manager, mock_store, mock_transaction, mock_validator, mock_events
+    ):
         """Test update method when entity doesn't exist."""
         entity_id = "nonexistent"
         entity_properties = {"name": "Jane Doe"}
@@ -225,8 +253,9 @@ class TestEntityManager:
         mock_events.emit.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_delete_entity_success(self, entity_manager, mock_store, mock_transaction,
-                                          mock_events, sample_entity):
+    async def test_delete_entity_success(
+        self, entity_manager, mock_store, mock_transaction, mock_events, sample_entity
+    ):
         """Test delete method successful execution."""
         entity_id = "entity-123"
         mock_store.get_entity.return_value = sample_entity
@@ -240,13 +269,14 @@ class TestEntityManager:
         mock_events.emit.assert_called_once_with(
             GraphEvent.ENTITY_DELETE,
             entity_id=entity_id,
-            entity_type=sample_entity.type
+            entity_type=sample_entity.type,
         )
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_delete_entity_verify_deleted(self, entity_manager, mock_store, mock_transaction,
-                                               mock_events, sample_entity):
+    async def test_delete_entity_verify_deleted(
+        self, entity_manager, mock_store, mock_transaction, mock_events, sample_entity
+    ):
         """Test delete method actually removes the entity."""
         entity_id = "entity-123"
 
@@ -264,8 +294,9 @@ class TestEntityManager:
         assert mock_store.get_entity.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_delete_entity_failed_operation(self, entity_manager, mock_store, mock_transaction,
-                                                 mock_events, sample_entity):
+    async def test_delete_entity_failed_operation(
+        self, entity_manager, mock_store, mock_transaction, mock_events, sample_entity
+    ):
         """Test delete method when delete operation fails."""
         entity_id = "entity-123"
         mock_store.get_entity.return_value = sample_entity
@@ -282,7 +313,9 @@ class TestEntityManager:
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_delete_entity_not_found(self, entity_manager, mock_store, mock_transaction, mock_events):
+    async def test_delete_entity_not_found(
+        self, entity_manager, mock_store, mock_transaction, mock_events
+    ):
         """Test delete method when entity doesn't exist."""
         entity_id = "nonexistent"
         mock_store.get_entity.return_value = None

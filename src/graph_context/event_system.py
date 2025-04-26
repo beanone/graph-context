@@ -5,15 +5,17 @@ This module provides a minimal pub/sub system for graph operations, allowing fea
 to react to changes in the graph without coupling to specific implementations.
 """
 
-from enum import Enum
-from typing import Any, Callable, Awaitable, Dict, Optional, Set
 from collections import defaultdict
-from pydantic import BaseModel, ConfigDict, Field
+from datetime import UTC, datetime
+from enum import Enum
+from typing import Any, Awaitable, Callable, Dict, Optional, Set
 from uuid import uuid4
-from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, Field
 
 # Type alias for event handlers
 EventHandler = Callable[["EventContext"], Awaitable[None]]
+
 
 class GraphEvent(str, Enum):
     """Core graph operation events.
@@ -21,6 +23,7 @@ class GraphEvent(str, Enum):
     These events represent the fundamental operations that can occur in the graph,
     without making assumptions about how they will be used.
     """
+
     # Entity operations
     ENTITY_READ = "entity:read"
     ENTITY_WRITE = "entity:write"
@@ -48,12 +51,14 @@ class GraphEvent(str, Enum):
     TRANSACTION_COMMIT = "transaction:commit"
     TRANSACTION_ROLLBACK = "transaction:rollback"
 
+
 class EventMetadata(BaseModel):
     """Metadata for graph events.
 
     Contains structured information about the operation that can be used
     by event handlers for tasks like caching and logging.
     """
+
     # Type information
     entity_type: Optional[str] = None
     relation_type: Optional[str] = None
@@ -61,7 +66,7 @@ class EventMetadata(BaseModel):
 
     # Operation details
     operation_id: str = Field(default_factory=lambda: str(uuid4()))
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     # Query/traversal metadata
     query_spec: Optional[Dict[str, Any]] = None
@@ -73,6 +78,7 @@ class EventMetadata(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+
 class EventContext(BaseModel):
     """Context for a graph event.
 
@@ -82,6 +88,7 @@ class EventContext(BaseModel):
 
     This class is immutable to ensure event data cannot be modified after creation.
     """
+
     event: GraphEvent
     metadata: EventMetadata
     data: Dict[str, Any]
@@ -90,11 +97,12 @@ class EventContext(BaseModel):
 
     def __init__(self, **data: Any) -> None:
         """Initialize with default empty data dict if none provided."""
-        if 'data' not in data:
-            data['data'] = {}
-        if 'metadata' not in data:
-            data['metadata'] = EventMetadata()
+        if "data" not in data:
+            data["data"] = {}
+        if "metadata" not in data:
+            data["metadata"] = EventMetadata()
         super().__init__(**data)
+
 
 class EventSystem:
     """Simple pub/sub system for graph operations.
@@ -132,12 +140,7 @@ class EventSystem:
         except ValueError:
             pass  # Handler wasn't registered, ignore
 
-    async def emit(
-        self,
-        event: GraphEvent,
-        metadata: Optional[EventMetadata] = None,
-        **data: Any
-    ) -> None:
+    async def emit(self, event: GraphEvent, metadata: Optional[EventMetadata] = None, **data: Any) -> None:
         """Emit a graph event to all subscribers.
 
         Args:
@@ -150,36 +153,7 @@ class EventSystem:
 
         # If metadata is not provided, create default metadata based on event type and data
         if metadata is None:
-            metadata_kwargs = {}
-
-            # Set bulk operation metadata
-            if event in {
-                GraphEvent.ENTITY_BULK_WRITE,
-                GraphEvent.ENTITY_BULK_DELETE,
-                GraphEvent.RELATION_BULK_WRITE,
-                GraphEvent.RELATION_BULK_DELETE
-            }:
-                metadata_kwargs["is_bulk"] = True
-                if "entities" in data:
-                    metadata_kwargs["affected_count"] = len(data["entities"])
-                elif "relations" in data:
-                    metadata_kwargs["affected_count"] = len(data["relations"])
-
-            # Set query metadata
-            if event == GraphEvent.QUERY_EXECUTED and "query_spec" in data:
-                metadata_kwargs["query_spec"] = data["query_spec"]
-
-            # Set traversal metadata
-            if event == GraphEvent.TRAVERSAL_EXECUTED and "traversal_spec" in data:
-                metadata_kwargs["traversal_spec"] = data["traversal_spec"]
-
-            # Set type information
-            if "entity_type" in data:
-                metadata_kwargs["entity_type"] = data["entity_type"]
-            if "relation_type" in data:
-                metadata_kwargs["relation_type"] = data["relation_type"]
-            if "affected_types" in data:
-                metadata_kwargs["affected_types"] = set(data["affected_types"])
+            metadata_kwargs = self.create_metadata(event, data)
 
             metadata = EventMetadata(**metadata_kwargs)
 
@@ -195,6 +169,40 @@ class EventSystem:
                 # This prevents one handler from breaking others
                 # TODO: Add proper error logging
                 continue
+
+    def create_metadata(self, event, data):
+        """Create metadata for an event."""
+        metadata_kwargs = {}
+
+        # Set bulk operation metadata
+        if event in {
+            GraphEvent.ENTITY_BULK_WRITE,
+            GraphEvent.ENTITY_BULK_DELETE,
+            GraphEvent.RELATION_BULK_WRITE,
+            GraphEvent.RELATION_BULK_DELETE,
+        }:
+            metadata_kwargs["is_bulk"] = True
+            if "entities" in data:
+                metadata_kwargs["affected_count"] = len(data["entities"])
+            elif "relations" in data:
+                metadata_kwargs["affected_count"] = len(data["relations"])
+
+            # Set query metadata
+        if event == GraphEvent.QUERY_EXECUTED and "query_spec" in data:
+            metadata_kwargs["query_spec"] = data["query_spec"]
+
+            # Set traversal metadata
+        if event == GraphEvent.TRAVERSAL_EXECUTED and "traversal_spec" in data:
+            metadata_kwargs["traversal_spec"] = data["traversal_spec"]
+
+            # Set type information
+        if "entity_type" in data:
+            metadata_kwargs["entity_type"] = data["entity_type"]
+        if "relation_type" in data:
+            metadata_kwargs["relation_type"] = data["relation_type"]
+        if "affected_types" in data:
+            metadata_kwargs["affected_types"] = set(data["affected_types"])
+        return metadata_kwargs
 
     def enable(self) -> None:
         """Enable event emission."""

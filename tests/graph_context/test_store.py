@@ -1,12 +1,12 @@
 """Tests for the graph store factory."""
-import pytest
-import os
+
 import json
+import os
 from unittest import mock
-from typing import Dict, Any, Type
+
+import pytest
 
 from graph_context.store import GraphStoreFactory, StoreConfig
-from graph_context.interfaces.store import GraphStore
 from graph_context.stores.memory_store import InMemoryGraphStore
 
 
@@ -15,10 +15,7 @@ class TestStoreConfig:
 
     def test_init(self):
         """Test initialization of StoreConfig."""
-        config_data = {
-            "type": "memory",
-            "config": {"setting": "value"}
-        }
+        config_data = {"type": "memory", "config": {"setting": "value"}}
 
         config = StoreConfig(**config_data)
 
@@ -53,8 +50,9 @@ class TestGraphStoreFactory:
         """Test creating a store with default configuration."""
         # Mock _load_config to return a default configuration
         with mock.patch.object(
-            GraphStoreFactory, "_load_config",
-            return_value=StoreConfig(type="memory", config={})
+            GraphStoreFactory,
+            "_load_config",
+            return_value=StoreConfig(type="memory", config={}),
         ):
             store = GraphStoreFactory.create()
 
@@ -68,8 +66,9 @@ class TestGraphStoreFactory:
 
         # Mock _load_config to return custom configuration
         with mock.patch.object(
-            GraphStoreFactory, "_load_config",
-            return_value=StoreConfig(type="custom", config={"test": "value"})
+            GraphStoreFactory,
+            "_load_config",
+            return_value=StoreConfig(type="custom", config={"test": "value"}),
         ):
             store = GraphStoreFactory.create()
 
@@ -83,8 +82,11 @@ class TestGraphStoreFactory:
 
             # Create a new store with mock class
             with mock.patch.object(
-                GraphStoreFactory, "_load_config",
-                return_value=StoreConfig(type="mock_store", config={"mock_setting": "mock_value"})
+                GraphStoreFactory,
+                "_load_config",
+                return_value=StoreConfig(
+                    type="mock_store", config={"mock_setting": "mock_value"}
+                ),
             ):
                 GraphStoreFactory.create()
 
@@ -95,8 +97,9 @@ class TestGraphStoreFactory:
         """Test creating a store with unknown type raises error."""
         # Mock _load_config to return unknown configuration
         with mock.patch.object(
-            GraphStoreFactory, "_load_config",
-            return_value=StoreConfig(type="unknown", config={})
+            GraphStoreFactory,
+            "_load_config",
+            return_value=StoreConfig(type="unknown", config={}),
         ):
             # Verify ValueError is raised
             with pytest.raises(ValueError, match="Unknown store type: unknown"):
@@ -107,7 +110,9 @@ class TestGraphStoreFactory:
         config_dict = {"type": "memory", "config": {"env_setting": "env_value"}}
 
         # Set environment variable with JSON string
-        with mock.patch.dict(os.environ, {GraphStoreFactory._CONFIG_ENV_VAR: json.dumps(config_dict)}):
+        with mock.patch.dict(
+            os.environ, {GraphStoreFactory._CONFIG_ENV_VAR: json.dumps(config_dict)}
+        ):
             config = GraphStoreFactory._load_config()
 
             assert config.type == "memory"
@@ -116,7 +121,9 @@ class TestGraphStoreFactory:
     def test_load_config_from_env_invalid_json(self):
         """Test loading configuration from environment with invalid JSON."""
         # Set environment variable with invalid JSON
-        with mock.patch.dict(os.environ, {GraphStoreFactory._CONFIG_ENV_VAR: "invalid json"}):
+        with mock.patch.dict(
+            os.environ, {GraphStoreFactory._CONFIG_ENV_VAR: "invalid json"}
+        ):
             with pytest.raises(ValueError, match="Invalid environment configuration"):
                 GraphStoreFactory._load_config()
 
@@ -127,10 +134,13 @@ class TestGraphStoreFactory:
         # Mock environment to not have the variable
         # Mock os.path.exists to return True for the config file
         # Mock open to return a file-like object with the config JSON
-        with mock.patch.dict(os.environ, {}, clear=True), \
-             mock.patch("os.path.exists", return_value=True), \
-             mock.patch("builtins.open", mock.mock_open(read_data=json.dumps(config_dict))):
-
+        with (
+            mock.patch.dict(os.environ, {}, clear=True),
+            mock.patch("os.path.exists", return_value=True),
+            mock.patch(
+                "builtins.open", mock.mock_open(read_data=json.dumps(config_dict))
+            ),
+        ):
             config = GraphStoreFactory._load_config()
 
             assert config.type == "memory"
@@ -141,10 +151,11 @@ class TestGraphStoreFactory:
         # Mock environment to not have the variable
         # Mock os.path.exists to return True for the config file
         # Mock open to return a file-like object with invalid JSON
-        with mock.patch.dict(os.environ, {}, clear=True), \
-             mock.patch("os.path.exists", return_value=True), \
-             mock.patch("builtins.open", mock.mock_open(read_data="invalid json")):
-
+        with (
+            mock.patch.dict(os.environ, {}, clear=True),
+            mock.patch("os.path.exists", return_value=True),
+            mock.patch("builtins.open", mock.mock_open(read_data="invalid json")),
+        ):
             with pytest.raises(ValueError, match="Invalid configuration file"):
                 GraphStoreFactory._load_config()
 
@@ -152,9 +163,10 @@ class TestGraphStoreFactory:
         """Test falling back to default when config file not found."""
         # Mock environment to not have the variable
         # Mock os.path.exists to return False for the config file
-        with mock.patch.dict(os.environ, {}, clear=True), \
-             mock.patch("os.path.exists", return_value=False):
-
+        with (
+            mock.patch.dict(os.environ, {}, clear=True),
+            mock.patch("os.path.exists", return_value=False),
+        ):
             config = GraphStoreFactory._load_config()
 
             # Should return default config
@@ -166,10 +178,13 @@ class TestGraphStoreFactory:
         # Mock environment to not have the variable
         # Mock os.path.exists to return True for the config file
         # Mock open to raise a permission error
-        with mock.patch.dict(os.environ, {}, clear=True), \
-             mock.patch("os.path.exists", return_value=True), \
-             mock.patch("builtins.open", side_effect=PermissionError("Permission denied")):
-
+        with (
+            mock.patch.dict(os.environ, {}, clear=True),
+            mock.patch("os.path.exists", return_value=True),
+            mock.patch(
+                "builtins.open", side_effect=PermissionError("Permission denied")
+            ),
+        ):
             with pytest.raises(ValueError, match="Invalid configuration file"):
                 GraphStoreFactory._load_config()
 
@@ -179,7 +194,11 @@ class TestGraphStoreFactory:
         # Test with specific and comprehensive config
         config_dict = {
             "type": "custom_type",
-            "config": {"setting1": "value1", "setting2": [1, 2, 3], "setting3": {"nested": True}}
+            "config": {
+                "setting1": "value1",
+                "setting2": [1, 2, 3],
+                "setting3": {"nested": True},
+            },
         }
 
         # Mock store class
@@ -189,22 +208,34 @@ class TestGraphStoreFactory:
         GraphStoreFactory.register_store_type("custom_type", mock_store)
 
         # Test end-to-end flow with environment variable
-        with mock.patch.dict(os.environ, {GraphStoreFactory._CONFIG_ENV_VAR: json.dumps(config_dict)}):
-            with mock.patch.object(GraphStoreFactory, "_store_types") as mock_store_types:
+        with mock.patch.dict(
+            os.environ, {GraphStoreFactory._CONFIG_ENV_VAR: json.dumps(config_dict)}
+        ):
+            with mock.patch.object(
+                GraphStoreFactory, "_store_types"
+            ) as mock_store_types:
                 # Set up the mock store types
                 mock_store_types.__getitem__.return_value = mock_store
                 mock_store_types.__contains__.return_value = True
 
                 # Call create() which should use the environment config
-                store = GraphStoreFactory.create()
+                GraphStoreFactory.create()
 
                 # Verify mock_store was called with the correct config
-                mock_store.assert_called_once_with({"setting1": "value1", "setting2": [1, 2, 3], "setting3": {"nested": True}})
+                mock_store.assert_called_once_with(
+                    {
+                        "setting1": "value1",
+                        "setting2": [1, 2, 3],
+                        "setting3": {"nested": True},
+                    }
+                )
 
-    def test_load_config_TypeError_handling(self):
+    def test_load_config_typeerror_handling(self):
         """Test handling TypeError during config loading from env var."""
         # Set environment variable with valid JSON but invalid config structure
-        with mock.patch.dict(os.environ, {GraphStoreFactory._CONFIG_ENV_VAR: '{"not_type": "invalid"}'}):
+        with mock.patch.dict(
+            os.environ, {GraphStoreFactory._CONFIG_ENV_VAR: '{"not_type": "invalid"}'}
+        ):
             with pytest.raises(ValueError, match="Invalid environment configuration"):
                 GraphStoreFactory._load_config()
 
@@ -220,7 +251,7 @@ class TestGraphStoreFactory:
                 assert config.type == "memory"
                 assert config.config == {}
 
-    def test_config_file_OSError_handling(self):
+    def test_config_file_oserror_handling(self):
         """Test handling OSError during config file reading."""
         # Ensure environment variable is not set
         with mock.patch.dict(os.environ, {}, clear=True):
@@ -256,10 +287,13 @@ class TestGraphStoreFactory:
 
             # Test with invalid store type
             with mock.patch.object(
-                GraphStoreFactory, "_load_config",
-                return_value=StoreConfig(type="nonexistent_type", config={})
+                GraphStoreFactory,
+                "_load_config",
+                return_value=StoreConfig(type="nonexistent_type", config={}),
             ):
-                with pytest.raises(ValueError, match="Unknown store type: nonexistent_type"):
+                with pytest.raises(
+                    ValueError, match="Unknown store type: nonexistent_type"
+                ):
                     GraphStoreFactory.create()
 
         finally:

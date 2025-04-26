@@ -4,16 +4,16 @@ This module provides the core caching functionality for the graph context,
 including the cache entry model and storage interface.
 """
 
-from typing import (TypeVar, Generic, Optional,
-                    AsyncIterator, Tuple,
-                    Set, Dict, Any)
-from datetime import datetime, UTC
-from pydantic import BaseModel, Field, ConfigDict
-from uuid import uuid4
-from cachetools import TTLCache
 from collections import defaultdict
+from datetime import UTC, datetime
+from typing import AsyncIterator, Dict, Generic, Optional, Set, Tuple, TypeVar
+from uuid import uuid4
 
-T = TypeVar('T')  # Changed from BaseModel to Any
+from cachetools import TTLCache
+from pydantic import BaseModel, ConfigDict, Field
+
+T = TypeVar("T")  # Changed from BaseModel to Any
+
 
 class CacheEntry(BaseModel, Generic[T]):
     """Cache entry with metadata.
@@ -27,6 +27,7 @@ class CacheEntry(BaseModel, Generic[T]):
         query_hash: Hash of the query that produced this result (for query results)
         dependencies: Set of entity/relation IDs this entry depends on
     """
+
     value: T
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     entity_type: Optional[str] = None
@@ -37,13 +38,14 @@ class CacheEntry(BaseModel, Generic[T]):
 
     model_config = ConfigDict(frozen=True)
 
+
 class CacheStore:
     """Cache store implementation with type awareness and TTL support."""
 
     def __init__(
         self,
         maxsize: int = 10000,
-        ttl: Optional[int] = 300  # 5 minutes default TTL
+        ttl: Optional[int] = 300,  # 5 minutes default TTL
     ):
         """Initialize the cache store.
 
@@ -72,11 +74,8 @@ class CacheStore:
         except KeyError:
             return None
 
-    async def set(
-        self,
-        key: str,
-        entry: CacheEntry,
-        dependencies: Optional[Set[str]] = None
+    async def set(  # noqa: C901
+        self, key: str, entry: CacheEntry, dependencies: Optional[Set[str]] = None
     ) -> None:
         """Store a cache entry.
 
@@ -185,7 +184,7 @@ class CacheStore:
         self._entity_relations.clear()
         self._relation_entities.clear()
 
-    async def invalidate_type(self, type_name: str) -> None:
+    async def invalidate_type(self, type_name: str) -> None:  # noqa: C901
         """Invalidate all cache entries for a type.
 
         Args:
@@ -227,7 +226,7 @@ class CacheStore:
                         await self.delete(relation_key)
                     self._entity_relations.pop(key, None)
 
-                # If this is a query or traversal entry, also invalidate any entries that depend on it
+                # For query or traversal entry, invalidate any entries that depend on it
                 if key.startswith(("query:", "traversal:")):
                     await self.invalidate_dependencies(key)
 
@@ -290,6 +289,7 @@ class CacheStore:
             self._entity_relations.pop(key, None)
         elif key.startswith("relation:"):
             self._relation_entities.pop(key, None)
+
 
 class DisabledCacheStore(CacheStore):
     """A cache store implementation that does nothing.

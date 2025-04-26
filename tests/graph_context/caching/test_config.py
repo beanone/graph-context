@@ -1,11 +1,15 @@
 """Tests for the cache configuration module."""
 
-import pytest
 from datetime import datetime, timedelta
-from graph_context.caching.config import CacheMetrics, CacheConfig
+
+import pytest
+
+from graph_context.caching.config import CacheConfig, CacheMetrics
 
 
 class TestCacheMetrics:
+    """Tests for the CacheMetrics class."""
+
     def test_default_initialization(self):
         """Test default initialization of CacheMetrics."""
         metrics = CacheMetrics()
@@ -49,6 +53,8 @@ class TestCacheMetrics:
 
 
 class TestCacheConfig:
+    """Tests for the CacheConfig class."""
+
     def test_default_initialization(self):
         """Test default initialization of CacheConfig."""
         config = CacheConfig()
@@ -74,13 +80,16 @@ class TestCacheConfig:
         assert config.traversal_cache_size == 500
         assert config.traversal_cache_ttl == 60.0
 
-    @pytest.mark.parametrize("type_name,expected_ttl", [
-        ("entity", 300.0),
-        ("relation", 300.0),
-        ("query", 60.0),
-        ("traversal", 60.0),
-        ("unknown", 300.0),  # Should return default_ttl
-    ])
+    @pytest.mark.parametrize(
+        "type_name,expected_ttl",
+        [
+            ("entity", 300.0),
+            ("relation", 300.0),
+            ("query", 60.0),
+            ("traversal", 60.0),
+            ("unknown", 300.0),  # Should return default_ttl
+        ],
+    )
     def test_get_ttl_for_type(self, type_name, expected_ttl):
         """Test getting TTL for different types."""
         config = CacheConfig()

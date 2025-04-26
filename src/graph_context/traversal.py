@@ -4,9 +4,10 @@ Graph traversal module providing different traversal strategies and utilities.
 This module encapsulates the logic for traversing graphs, supporting different
 traversal strategies, path tracking, and cycle detection.
 """
-from typing import Dict, List, Any, Set, Tuple, Optional, TypeVar, Generic, Protocol, Iterator
-from dataclasses import dataclass
+
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Any, Dict, Iterator, List, Optional, Protocol, Set, Tuple
 
 from .types.type_base import Entity, Relation
 
@@ -26,6 +27,7 @@ class GraphLike(Protocol):
 @dataclass
 class TraversalPath:
     """Represents a path through the graph during traversal."""
+
     entity: Entity
     path: List[Tuple[Relation, Entity]]
     depth: int
@@ -34,8 +36,11 @@ class TraversalPath:
 @dataclass
 class TraversalSpec:
     """Specification for how to traverse the graph."""
+
     direction: str = "any"  # "outbound", "inbound", or "any"
-    relation_types: Optional[List[str]] = None  # List of relation types to follow (None for any)
+    relation_types: Optional[List[str]] = (
+        None  # List of relation types to follow (None for any)
+    )
     max_depth: float = float("inf")  # Maximum traversal depth
     include_start: bool = False  # Whether to include start entity in results
     return_paths: bool = False  # Whether to return full paths instead of just entities
@@ -60,7 +65,7 @@ class TraversalStrategy(ABC):
         graph: GraphLike,
         current_id: str,
         spec: TraversalSpec,
-        current_path: List[Tuple[Relation, Entity]]
+        current_path: List[Tuple[Relation, Entity]],
     ) -> Iterator[Tuple[str, Relation]]:
         """Find all connected entities based on traversal specification.
 
@@ -80,9 +85,15 @@ class TraversalStrategy(ABC):
 
             # Check direction and get next entity
             next_id = None
-            if spec.direction in ("outbound", "any") and relation.from_entity == current_id:
+            if (
+                spec.direction in ("outbound", "any")
+                and relation.from_entity == current_id
+            ):
                 next_id = relation.to_entity
-            elif spec.direction in ("inbound", "any") and relation.to_entity == current_id:
+            elif (
+                spec.direction in ("inbound", "any")
+                and relation.to_entity == current_id
+            ):
                 next_id = relation.from_entity
 
             if next_id is not None:
@@ -94,7 +105,7 @@ class TraversalStrategy(ABC):
         visited: Set[str],
         path_counts: Dict[str, int],
         current_path: List[Tuple[Relation, Entity]],
-        spec: TraversalSpec
+        spec: TraversalSpec,
     ) -> bool:
         """Determine if a node should be skipped during traversal.
 
@@ -133,7 +144,7 @@ class TraversalStrategy(ABC):
         visited: Set[str],
         path_counts: Dict[str, int],
         graph: GraphLike,
-        spec: TraversalSpec
+        spec: TraversalSpec,
     ) -> None:
         """Add current entity to results if appropriate.
 
@@ -151,17 +162,17 @@ class TraversalStrategy(ABC):
             graph: The graph being traversed
             spec: Traversal specification
         """
-        if (current_id != spec.start_entity or spec.include_start) and depth <= spec.max_depth:
+        if (
+            current_id != spec.start_entity or spec.include_start
+        ) and depth <= spec.max_depth:
             entity = await graph.get_entity(current_id)
             if spec.return_paths:
                 # For path traversal, allow multiple paths to the same node
                 path_counts[current_id] = path_counts.get(current_id, 0) + 1
                 if path_counts[current_id] <= spec.max_paths_per_node:
-                    results.append(TraversalPath(
-                        entity=entity,
-                        path=current_path,
-                        depth=depth
-                    ))
+                    results.append(
+                        TraversalPath(entity=entity, path=current_path, depth=depth)
+                    )
             elif current_id not in visited:
                 # For non-path traversal, visit each node only once
                 results.append(entity)
@@ -169,10 +180,7 @@ class TraversalStrategy(ABC):
 
     @abstractmethod
     async def traverse(
-        self,
-        graph: GraphLike,
-        start_entity: str,
-        spec: TraversalSpec
+        self, graph: GraphLike, start_entity: str, spec: TraversalSpec
     ) -> List[Entity | TraversalPath]:
         """
         Traverse the graph according to the strategy.
@@ -192,10 +200,7 @@ class BreadthFirstTraversal(TraversalStrategy):
     """Breadth-first traversal strategy."""
 
     async def traverse(
-        self,
-        graph: GraphLike,
-        start_entity: str,
-        spec: TraversalSpec
+        self, graph: GraphLike, start_entity: str, spec: TraversalSpec
     ) -> List[Entity | TraversalPath]:
         """Traverse the graph using breadth-first search."""
         if not await graph.get_entity(start_entity):
@@ -217,8 +222,14 @@ class BreadthFirstTraversal(TraversalStrategy):
 
             # Add current entity to results if appropriate
             await self._add_to_results(
-                results, current_id, current_path, depth,
-                visited, path_counts, graph, spec
+                results,
+                current_id,
+                current_path,
+                depth,
+                visited,
+                path_counts,
+                graph,
+                spec,
             )
 
             if depth < spec.max_depth:
@@ -233,7 +244,7 @@ class BreadthFirstTraversal(TraversalStrategy):
 
                     # Create new path by appending current step
                     next_entity = await graph.get_entity(next_id)
-                    new_path = current_path + [(relation, next_entity)]
+                    new_path = [*current_path, (relation, next_entity)]
                     queue.append((next_id, new_path, depth + 1))
 
         return results
@@ -243,10 +254,7 @@ class DepthFirstTraversal(TraversalStrategy):
     """Depth-first traversal strategy."""
 
     async def traverse(
-        self,
-        graph: GraphLike,
-        start_entity: str,
-        spec: TraversalSpec
+        self, graph: GraphLike, start_entity: str, spec: TraversalSpec
     ) -> List[Entity | TraversalPath]:
         """Traverse the graph using depth-first search."""
         if not await graph.get_entity(start_entity):
@@ -260,11 +268,19 @@ class DepthFirstTraversal(TraversalStrategy):
         path_counts = {}  # Track number of paths per node
         results = []
 
-        async def dfs(current_id: str, current_path: List[Tuple[Relation, Entity]], depth: int) -> None:
+        async def dfs(
+            current_id: str, current_path: List[Tuple[Relation, Entity]], depth: int
+        ) -> None:
             # Add current entity to results if appropriate
             await self._add_to_results(
-                results, current_id, current_path, depth,
-                visited, path_counts, graph, spec
+                results,
+                current_id,
+                current_path,
+                depth,
+                visited,
+                path_counts,
+                graph,
+                spec,
             )
 
             if depth < spec.max_depth:
@@ -279,7 +295,7 @@ class DepthFirstTraversal(TraversalStrategy):
 
                     # Create new path by appending current step
                     next_entity = await graph.get_entity(next_id)
-                    new_path = current_path + [(relation, next_entity)]
+                    new_path = [*current_path, (relation, next_entity)]
                     await dfs(next_id, new_path, depth + 1)
 
         # Start traversal from the start entity
@@ -296,7 +312,7 @@ async def traverse(
     graph: GraphLike,
     start_entity: str,
     traversal_spec: Dict[str, Any],
-    strategy: str = "bfs"
+    strategy: str = "bfs",
 ) -> List[Entity | TraversalPath]:
     """
     Traverse the graph according to the specified strategy.

@@ -1,20 +1,19 @@
-from unittest.mock import MagicMock, AsyncMock
+"""Tests for the BaseGraphContext class."""
+
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from graph_context.context_base import BaseGraphContext
 from graph_context.exceptions import SchemaError
-from graph_context.types.type_base import (
-    EntityType,
-    PropertyDefinition,
-    RelationType,
-)
+from graph_context.types.type_base import EntityType, PropertyDefinition, RelationType
 
 
-class TestBaseGraphContext(BaseGraphContext):
+class MockBaseGraphContext(BaseGraphContext):
     """Test implementation of BaseGraphContext that uses mocks for all managers."""
 
     def __init__(self):
+        """Initialize the mock base graph context."""
         super().__init__()
 
         # Replace all managers with mocks
@@ -33,7 +32,7 @@ class TestBaseGraphContext(BaseGraphContext):
 @pytest.fixture
 async def base_context():
     """Create a BaseGraphContext with mocked components for testing."""
-    context = TestBaseGraphContext()
+    context = MockBaseGraphContext()
     yield context
 
 
@@ -291,7 +290,7 @@ async def test_register_entity_type(base_context):
     base_context._events.emit = AsyncMock()
     entity_type = EntityType(
         name="TestType",
-        properties={"name": PropertyDefinition(type="string", required=True)}
+        properties={"name": PropertyDefinition(type="string", required=True)},
     )
 
     # Call the method
@@ -311,7 +310,7 @@ async def test_register_entity_type_duplicate(base_context):
     # Setup
     entity_type = EntityType(
         name="TestType",
-        properties={"name": PropertyDefinition(type="string", required=True)}
+        properties={"name": PropertyDefinition(type="string", required=True)},
     )
 
     # Register once
@@ -333,16 +332,12 @@ async def test_register_relation_type(base_context):
     # Register required entity types
     person_type = EntityType(
         name="Person",
-        properties={"name": PropertyDefinition(type="string", required=True)}
+        properties={"name": PropertyDefinition(type="string", required=True)},
     )
     base_context._entity_types["Person"] = person_type
 
     # Create relation type
-    relation_type = RelationType(
-        name="knows",
-        from_types=["Person"],
-        to_types=["Person"]
-    )
+    relation_type = RelationType(name="knows", from_types=["Person"], to_types=["Person"])
 
     # Call the method
     await base_context.register_relation_type(relation_type)
@@ -359,11 +354,7 @@ async def test_register_relation_type(base_context):
 async def test_register_relation_type_unknown_entity(base_context):
     """Test register_relation_type with unknown entity types."""
     # Create relation type with unknown entity
-    relation_type = RelationType(
-        name="knows",
-        from_types=["UnknownType"],
-        to_types=["Person"]
-    )
+    relation_type = RelationType(name="knows", from_types=["UnknownType"], to_types=["Person"])
 
     # Call the method
     with pytest.raises(SchemaError) as exc_info:
