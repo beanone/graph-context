@@ -11,7 +11,7 @@ from graph_context.types.type_base import (
 )
 
 
-class TestBaseGraphContext(BaseGraphContext):
+class MockBaseGraphContext(BaseGraphContext):
     """Test implementation of BaseGraphContext that uses mocks for all managers."""
 
     def __init__(self):
@@ -33,7 +33,7 @@ class TestBaseGraphContext(BaseGraphContext):
 @pytest.fixture
 async def base_context():
     """Create a BaseGraphContext with mocked components for testing."""
-    context = TestBaseGraphContext()
+    context = MockBaseGraphContext()
     yield context
 
 

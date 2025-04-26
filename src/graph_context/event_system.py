@@ -6,7 +6,7 @@ to react to changes in the graph without coupling to specific implementations.
 """
 
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, UTC
 from enum import Enum
 from typing import Any, Awaitable, Callable, Dict, Optional, Set
 from uuid import uuid4
@@ -62,7 +62,7 @@ class EventMetadata(BaseModel):
 
     # Operation details
     operation_id: str = Field(default_factory=lambda: str(uuid4()))
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     # Query/traversal metadata
     query_spec: Optional[Dict[str, Any]] = None

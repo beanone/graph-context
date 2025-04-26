@@ -4,7 +4,7 @@ Base type definitions for the graph-context module.
 This module defines the core types used throughout the graph-context component,
 including entity and relation types, property types, and validation rules.
 """
-from datetime import datetime
+from datetime import datetime, UTC
 from enum import Enum
 from typing import Any
 
@@ -77,11 +77,11 @@ class Entity(BaseModel):
         description="Dictionary of property values"
     )
     created_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(UTC),
         description="Timestamp of entity creation"
     )
     updated_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(UTC),
         description="Timestamp of last update"
     )
 
@@ -97,11 +97,11 @@ class Relation(BaseModel):
         description="Dictionary of property values"
     )
     created_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(UTC),
         description="Timestamp of relation creation"
     )
     updated_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(UTC),
         description="Timestamp of last update"
     )
 
