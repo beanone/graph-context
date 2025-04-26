@@ -236,9 +236,9 @@ class CachedGraphContext(GraphContext):
         await self._initialize()
         logger.debug(f"Getting entity {entity_id}")
 
-        # Skip cache if in transaction - go directly to base context
-        if self._transaction.is_in_transaction():
-            logger.debug(f"In transaction, bypassing cache for entity {entity_id}")
+        # Skip cache if in transaction or caching is disabled
+        if self._transaction.is_in_transaction() or not self._cache_manager.is_enabled():
+            logger.debug(f"Bypassing cache for entity {entity_id} (transaction={self._transaction.is_in_transaction()}, caching_enabled={self._cache_manager.is_enabled()})")
             result = await self._base.get_entity(entity_id)
             if result is None:
                 logger.debug(f"Entity {entity_id} not found in base context")
@@ -259,7 +259,7 @@ class CachedGraphContext(GraphContext):
         if result is not None:
             entry = CacheEntry(
                 value=result,
-                entity_type=result["type"]
+                entity_type=result.type
             )
             await self._cache_manager.store_manager.get_entity_store().set(entity_id, entry)
             logger.debug(f"Cached entity {entity_id} from base context")
@@ -282,8 +282,8 @@ class CachedGraphContext(GraphContext):
         """
         await self._initialize()
 
-        # Skip cache if in transaction - go directly to base context
-        if self._transaction.is_in_transaction():
+        # Skip cache if in transaction or caching is disabled
+        if self._transaction.is_in_transaction() or not self._cache_manager.is_enabled():
             result = await self._base.get_relation(relation_id)
             if result is None:
                 raise RelationNotFoundError(f"Relation {relation_id} not found")
@@ -301,7 +301,7 @@ class CachedGraphContext(GraphContext):
         if result is not None:
             entry = CacheEntry(
                 value=result,
-                relation_type=result["type"]
+                relation_type=result.type
             )
             await self._cache_manager.store_manager.get_relation_store().set(relation_id, entry)
             return result
@@ -320,9 +320,9 @@ class CachedGraphContext(GraphContext):
         await self._initialize()
         logger.debug(f"Executing query with spec: {query_spec}")
 
-        # Skip cache if in transaction - go directly to base context
-        if self._transaction.is_in_transaction():
-            logger.debug("In transaction, bypassing cache for query")
+        # Skip cache if in transaction or caching is disabled
+        if self._transaction.is_in_transaction() or not self._cache_manager.is_enabled():
+            logger.debug("Bypassing cache for query")
             return await self._base.query(query_spec) or []
 
         # Try to get from cache first
@@ -366,8 +366,8 @@ class CachedGraphContext(GraphContext):
         """
         await self._initialize()
 
-        # Skip cache if in transaction - go directly to base context
-        if self._transaction.is_in_transaction():
+        # Skip cache if in transaction or caching is disabled
+        if self._transaction.is_in_transaction() or not self._cache_manager.is_enabled():
             return await self._base.traverse(start_entity, traversal_spec) or []
 
         # Try to get from cache first

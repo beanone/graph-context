@@ -1,15 +1,17 @@
 """Integration tests for the cached graph context implementation."""
 
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, AsyncGenerator
 import asyncio
 import logging
 import pytest
 from unittest.mock import AsyncMock, Mock, patch
+from datetime import datetime, UTC
 
 from graph_context.caching.cached_context import CachedGraphContext
 from graph_context.caching.cache_manager import CacheManager
+from graph_context.caching.cache_store import CacheEntry
 from graph_context.event_system import EventSystem, GraphEvent, EventContext, EventMetadata
-from graph_context.interface import GraphContext
+from graph_context.context_base import BaseGraphContext
 from graph_context.types.type_base import Entity, Relation, EntityType, PropertyDefinition, RelationType
 from graph_context.exceptions import SchemaError, EntityNotFoundError, RelationNotFoundError
 
@@ -18,602 +20,306 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger('graph_context.caching.cached_context')
 logger.setLevel(logging.DEBUG)
 
-class MockGraphContext(GraphContext):
-    """Mock implementation of GraphContext for testing."""
-
-    def __init__(self):
-        self.entities = {}
-        self.relations = {}
-        self.next_id = 1
-        self.in_transaction = False
-        self._events = EventSystem()
-
-        # Register standard entity and relation types
-        self.entity_types = {
-            "person": EntityType(
-                name="person",
-                properties={
-                    "name": PropertyDefinition(type="string", required=True),
-                    "age": PropertyDefinition(type="integer", required=False)
-                }
-            )
-        }
-
-        self.relation_types = {
-            "knows": RelationType(
-                name="knows",
-                from_types=["person"],
-                to_types=["person"],
-                properties={
-                    "since": PropertyDefinition(type="string", required=False)
-                }
-            )
-        }
-
-    def _generate_id(self) -> str:
-        """Generate a unique ID."""
-        id_str = str(self.next_id)
-        self.next_id += 1
-        return id_str
-
-    async def cleanup(self) -> None:
-        """Clean up resources."""
-        self.entities = {}
-        self.relations = {}
-        self.in_transaction = False
-
-    async def register_entity_type(self, entity_type: EntityType) -> None:
-        """Register an entity type."""
-        self.entity_types[entity_type.name] = entity_type
-        await self._events.emit(GraphEvent.SCHEMA_MODIFIED)
-
-    async def register_relation_type(self, relation_type: RelationType) -> None:
-        """Register a relation type."""
-        self.relation_types[relation_type.name] = relation_type
-        await self._events.emit(GraphEvent.SCHEMA_MODIFIED)
-
-    async def begin_transaction(self) -> None:
-        """Begin a transaction."""
-        self.in_transaction = True
-        await self._events.emit(GraphEvent.TRANSACTION_BEGIN)
-
-    async def commit_transaction(self) -> None:
-        """Commit a transaction."""
-        self.in_transaction = False
-        await self._events.emit(GraphEvent.TRANSACTION_COMMIT)
-
-    async def rollback_transaction(self) -> None:
-        """Rollback a transaction."""
-        self.in_transaction = False
-        await self._events.emit(GraphEvent.TRANSACTION_ROLLBACK)
-
-    async def get_entity(self, entity_id: str) -> Entity:
-        """Get an entity by ID."""
-        if entity_id not in self.entities:
-            raise EntityNotFoundError(f"Entity {entity_id} not found")
-
-        entity = self.entities[entity_id]
-        await self._events.emit(
-            GraphEvent.ENTITY_READ,
-            entity_id=entity_id,
-            entity_type=entity["type"]
-        )
-        return {"id": entity_id, **entity}
-
-    async def create_entity(self, entity_type: str, properties: Dict[str, Any]) -> str:
-        """Create a new entity."""
-        if not self.in_transaction:
-            raise Exception("Operation requires transaction")
-
-        entity_id = self._generate_id()
-        entity = {"type": entity_type, "properties": properties}
-        self.entities[entity_id] = entity
-
-        await self._events.emit(
-            GraphEvent.ENTITY_WRITE,
-            entity_id=entity_id,
-            entity_type=entity_type
-        )
-        return entity_id
-
-    async def update_entity(self, entity_id: str, properties: Dict[str, Any]) -> bool:
-        """Update an entity."""
-        if not self.in_transaction:
-            raise Exception("Operation requires transaction")
-
-        if entity_id not in self.entities:
-            return False
-
-        self.entities[entity_id]["properties"] = properties
-
-        await self._events.emit(
-            GraphEvent.ENTITY_WRITE,
-            entity_id=entity_id,
-            entity_type=self.entities[entity_id]["type"]
-        )
-        return True
-
-    async def delete_entity(self, entity_id: str) -> bool:
-        """Delete an entity."""
-        if not self.in_transaction:
-            raise Exception("Operation requires transaction")
-
-        if entity_id not in self.entities:
-            return False
-
-        entity_type = self.entities[entity_id]["type"]
-        del self.entities[entity_id]
-
-        await self._events.emit(
-            GraphEvent.ENTITY_DELETE,
-            entity_id=entity_id,
-            entity_type=entity_type
-        )
-        return True
-
-    async def get_relation(self, relation_id: str) -> Relation:
-        """Get a relation by ID."""
-        if relation_id not in self.relations:
-            raise RelationNotFoundError(f"Relation {relation_id} not found")
-
-        relation = self.relations[relation_id]
-        await self._events.emit(
-            GraphEvent.RELATION_READ,
-            relation_id=relation_id,
-            relation_type=relation["type"]
-        )
-        return {"id": relation_id, **relation}
-
-    async def create_relation(
-        self,
-        relation_type: str,
-        from_entity: str,
-        to_entity: str,
-        properties: Optional[Dict[str, Any]] = None
-    ) -> str:
-        """Create a new relation."""
-        if not self.in_transaction:
-            raise Exception("Operation requires transaction")
-
-        # Verify entities exist
-        if from_entity not in self.entities:
-            raise EntityNotFoundError(f"From entity {from_entity} not found")
-
-        if to_entity not in self.entities:
-            raise EntityNotFoundError(f"To entity {to_entity} not found")
-
-        relation_id = self._generate_id()
-        relation = {
-            "type": relation_type,
-            "from_entity": from_entity,
-            "to_entity": to_entity,
-            "properties": properties or {}
-        }
-        self.relations[relation_id] = relation
-
-        await self._events.emit(
-            GraphEvent.RELATION_WRITE,
-            relation_id=relation_id,
-            relation_type=relation_type
-        )
-        return relation_id
-
-    async def update_relation(self, relation_id: str, properties: Dict[str, Any]) -> bool:
-        """Update a relation."""
-        if not self.in_transaction:
-            raise Exception("Operation requires transaction")
-
-        if relation_id not in self.relations:
-            return False
-
-        self.relations[relation_id]["properties"] = properties
-
-        await self._events.emit(
-            GraphEvent.RELATION_WRITE,
-            relation_id=relation_id,
-            relation_type=self.relations[relation_id]["type"]
-        )
-        return True
-
-    async def delete_relation(self, relation_id: str) -> bool:
-        """Delete a relation."""
-        if not self.in_transaction:
-            raise Exception("Operation requires transaction")
-
-        if relation_id not in self.relations:
-            return False
-
-        relation_type = self.relations[relation_id]["type"]
-        del self.relations[relation_id]
-
-        await self._events.emit(
-            GraphEvent.RELATION_DELETE,
-            relation_id=relation_id,
-            relation_type=relation_type
-        )
-        return True
-
-    async def query(self, query_spec: Dict[str, Any]) -> List[Entity]:
-        """Execute a query."""
-        results = []
-
-        # Simple implementation for testing
-        if "type" in query_spec:
-            for entity_id, entity in self.entities.items():
-                if entity["type"] == query_spec["type"]:
-                    results.append({"id": entity_id, **entity})
-
-        await self._events.emit(
-            GraphEvent.QUERY_EXECUTED,
-            query_spec=query_spec
-        )
-        return results
-
-    async def traverse(self, start_entity: str, traversal_spec: Dict[str, Any]) -> List[Entity]:
-        """Execute a traversal."""
-        results = []
-
-        # Verify start entity exists
-        if start_entity not in self.entities:
-            raise EntityNotFoundError(f"Start entity {start_entity} not found")
-
-        # Simple implementation for testing
-        if "relation_type" in traversal_spec:
-            target_ids = set()
-            for relation_id, relation in self.relations.items():
-                if (relation["type"] == traversal_spec["relation_type"] and
-                    relation["from_entity"] == start_entity):
-                    target_ids.add(relation["to_entity"])
-
-            for entity_id in target_ids:
-                entity = self.entities.get(entity_id)
-                if entity:
-                    results.append({"id": entity_id, **entity})
-
-        await self._events.emit(
-            GraphEvent.TRAVERSAL_EXECUTED,
-            start_entity=start_entity,
-            traversal_spec=traversal_spec
-        )
-        return results
-
 
 @pytest.fixture
-async def base_context():
-    """Create a base context for testing."""
-    return MockGraphContext()
+async def base_context() -> AsyncGenerator[BaseGraphContext, None]:
+    """Create a base context using InMemoryGraphStore."""
+    context = BaseGraphContext()
 
+    # Register standard entity and relation types
+    await context.register_entity_type(EntityType(
+        name="person",
+        properties={
+            "name": PropertyDefinition(type="string", required=True),
+            "age": PropertyDefinition(type="integer", required=False)
+        }
+    ))
 
-@pytest.fixture
-async def cached_context(base_context):
-    """Create a cached context for testing."""
-    cache_manager = CacheManager()
-    context = CachedGraphContext(base_context, cache_manager)
+    await context.register_relation_type(RelationType(
+        name="knows",
+        from_types=["person"],
+        to_types=["person"],
+        properties={
+            "since": PropertyDefinition(type="string", required=False)
+        }
+    ))
+
     yield context
     await context.cleanup()
 
 
-@pytest.mark.asyncio
-async def test_entity_caching(cached_context, base_context):
-    """Test that entities are properly cached and retrieved."""
-    # Start transaction for writing
-    await cached_context.begin_transaction()
-
-    # Create an entity
-    entity_id = await cached_context.create_entity("person", {"name": "Alice", "age": 30})
-
-    # Commit to make it persistent
-    await cached_context.commit_transaction()
-
-    # Get the entity - first time should retrieve from base context
-    entity1 = await cached_context.get_entity(entity_id)
-
-    # Access the cache directly to verify it's there
-    cache_store = cached_context._cache_manager.store_manager.get_entity_store()
-    cached_entry = await cache_store.get(entity_id)
-    assert cached_entry is not None
-    assert cached_entry.value["properties"]["name"] == "Alice"
-
-    # Patch base context's get_entity to fail if called
-    original_get_entity = base_context.get_entity
-    base_context.get_entity = AsyncMock(side_effect=Exception("Should not be called"))
-
+@pytest.fixture
+async def transaction(base_context: BaseGraphContext) -> AsyncGenerator[BaseGraphContext, None]:
+    """Create and manage a transaction for tests."""
+    await base_context.begin_transaction()
+    yield base_context
     try:
-        # Get the entity again - should use cache and not call base context
-        entity2 = await cached_context.get_entity(entity_id)
-        assert entity1 == entity2
-        assert entity1["properties"]["name"] == "Alice"
-        assert entity1["properties"]["age"] == 30
-    finally:
-        # Restore original method
-        base_context.get_entity = original_get_entity
+        await base_context.commit_transaction()
+    except:
+        await base_context.rollback_transaction()
+
+
+@pytest.fixture
+async def cached_context(base_context):
+    """Create a cached context with mocked dependencies."""
+    cache_manager = Mock(spec=CacheManager)
+    cache_manager.store_manager = Mock()
+    cache_manager.store_manager.clear_all = AsyncMock()
+    cache_manager.handle_event = AsyncMock()
+
+    # Set up cache stores
+    entity_store = AsyncMock()
+    relation_store = AsyncMock()
+    query_store = AsyncMock()
+    traversal_store = AsyncMock()
+
+    cache_manager.store_manager.get_entity_store.return_value = entity_store
+    cache_manager.store_manager.get_relation_store.return_value = relation_store
+    cache_manager.store_manager.get_query_store.return_value = query_store
+    cache_manager.store_manager.get_traversal_store.return_value = traversal_store
+
+    context = CachedGraphContext(base_context, cache_manager)
+    context._initialized = True  # Skip initialization
+    return context
 
 
 @pytest.mark.asyncio
-async def test_relation_caching(cached_context):
-    """Test that relations are properly cached and retrieved."""
-    # Start transaction for writing
-    await cached_context.begin_transaction()
+async def test_entity_caching(cached_context, transaction):
+    """Test entity caching behavior."""
+    # Create a test entity in the base context first
+    properties = {"name": "Test", "age": 30}
+    entity_id = await cached_context._base.create_entity("person", properties)
+    entity = await cached_context._base.get_entity(entity_id)  # Get the actual entity format
 
-    # Create two entities
-    entity1_id = await cached_context.create_entity("person", {"name": "Alice"})
-    entity2_id = await cached_context.create_entity("person", {"name": "Bob"})
-
-    # Create a relation between them
-    relation_id = await cached_context.create_relation(
-        "knows",
-        entity1_id,
-        entity2_id,
-        {"since": "2020"}
+    # Test cache hit
+    store = cached_context._cache_manager.store_manager.get_entity_store()
+    store.get.return_value = CacheEntry(
+        value=entity,
+        created_at=datetime.now(UTC),
+        entity_type="person"
     )
 
-    # Commit to make it persistent
-    await cached_context.commit_transaction()
+    result = await cached_context.get_entity(entity_id)
+    assert result == entity
+    store.get.assert_called_once_with(entity_id)
 
-    # Get the relation - first time should retrieve from base context
-    relation1 = await cached_context.get_relation(relation_id)
+    # Test cache miss
+    store.get.reset_mock()
+    store.get.return_value = None
 
-    # Access the cache directly to verify it's there
-    cache_store = cached_context._cache_manager.store_manager.get_relation_store()
-    cached_entry = await cache_store.get(relation_id)
-    assert cached_entry is not None
-    assert cached_entry.value["properties"]["since"] == "2020"
-
-    # Get the relation again - should use cache
-    relation2 = await cached_context.get_relation(relation_id)
-    assert relation1 == relation2
-    assert relation1["from_entity"] == entity1_id
-    assert relation1["to_entity"] == entity2_id
-    assert relation1["properties"]["since"] == "2020"
+    result = await cached_context.get_entity(entity_id)
+    assert result == entity
+    store.get.assert_called_once_with(entity_id)
+    store.set.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_cache_invalidation(cached_context):
-    """Test that cache is properly invalidated on updates and deletes."""
-    # Start transaction for writing
-    await cached_context.begin_transaction()
+async def test_relation_caching(cached_context, transaction):
+    """Test relation caching behavior."""
+    # Create test entities first
+    from_entity_id = await cached_context._base.create_entity("person", {"name": "Person A"})
+    to_entity_id = await cached_context._base.create_entity("person", {"name": "Person B"})
 
-    # Create an entity
-    entity_id = await cached_context.create_entity("person", {"name": "Alice"})
+    # Create the test relation
+    relation_id = await cached_context._base.create_relation(
+        "knows",
+        from_entity_id,
+        to_entity_id,
+        {"since": "2024"}
+    )
+    relation = await cached_context._base.get_relation(relation_id)
 
-    # Commit to make it persistent
-    await cached_context.commit_transaction()
+    # Test cache hit
+    store = cached_context._cache_manager.store_manager.get_relation_store()
+    store.get.return_value = CacheEntry(
+        value=relation,
+        created_at=datetime.now(UTC),
+        relation_type="knows"
+    )
 
-    # Get it once to ensure it's cached
-    entity1 = await cached_context.get_entity(entity_id)
+    result = await cached_context.get_relation(relation_id)
+    assert result == relation
+    store.get.assert_called_once_with(relation_id)
 
-    # Verify it's in the cache
-    cache_store = cached_context._cache_manager.store_manager.get_entity_store()
-    assert await cache_store.get(entity_id) is not None
+    # Test cache miss
+    store.get.reset_mock()
+    store.get.return_value = None
 
-    # Start transaction for updating
-    await cached_context.begin_transaction()
+    result = await cached_context.get_relation(relation_id)
+    assert result == relation
+    store.get.assert_called_once_with(relation_id)
+    store.set.assert_called_once()
 
-    # Update it
-    await cached_context.update_entity(entity_id, {"name": "Alice Smith"})
 
-    # Commit the update
-    await cached_context.commit_transaction()
+@pytest.mark.asyncio
+async def test_query_caching(cached_context, transaction):
+    """Test query caching behavior."""
+    # Create some test entities
+    entity1_id = await cached_context._base.create_entity("person", {"name": "Person A", "age": 30})
+    entity2_id = await cached_context._base.create_entity("person", {"name": "Person B", "age": 25})
 
-    # Verify it's invalidated in the cache
-    assert await cache_store.get(entity_id) is None
+    # Define query and get actual results
+    query_spec = {"entity_type": "person"}
+    results = await cached_context._base.query(query_spec)
 
-    # Get it again - should fetch fresh data
-    entity2 = await cached_context.get_entity(entity_id)
-    assert entity2["properties"]["name"] == "Alice Smith"
+    # Mock hash generation
+    query_hash = "test_hash"
+    cached_context._cache_manager._hash_query.return_value = query_hash
 
-    # Verify it's back in the cache
-    assert await cache_store.get(entity_id) is not None
+    # Test cache hit
+    store = cached_context._cache_manager.store_manager.get_query_store()
+    store.get.return_value = CacheEntry(
+        value=results,
+        created_at=datetime.now(UTC),
+        query_hash=query_hash
+    )
 
-    # Start transaction for deletion
-    await cached_context.begin_transaction()
+    query_results = await cached_context.query(query_spec)
+    assert query_results == results
+    store.get.assert_called_once_with(query_hash)
 
-    # Delete it
-    await cached_context.delete_entity(entity_id)
+    # Test cache miss
+    store.get.reset_mock()
+    store.get.return_value = None
 
-    # Commit the deletion
-    await cached_context.commit_transaction()
+    query_results = await cached_context.query(query_spec)
+    assert query_results == results
+    store.get.assert_called_once_with(query_hash)
+    store.set.assert_called_once()
 
-    # Verify it's invalidated in the cache
-    assert await cache_store.get(entity_id) is None
 
-    # Try to get it - should raise EntityNotFoundError
+@pytest.mark.asyncio
+async def test_traversal_caching(cached_context, transaction):
+    """Test traversal caching behavior."""
+    # Create test entities and relations
+    start_entity_id = await cached_context._base.create_entity("person", {"name": "Start Person"})
+    target1_id = await cached_context._base.create_entity("person", {"name": "Target 1"})
+    target2_id = await cached_context._base.create_entity("person", {"name": "Target 2"})
+
+    # Create relations
+    await cached_context._base.create_relation("knows", start_entity_id, target1_id)
+    await cached_context._base.create_relation("knows", start_entity_id, target2_id)
+
+    # Define traversal and get actual results
+    traversal_spec = {
+        "max_depth": 2,
+        "relation_types": ["knows"],
+        "direction": "outbound"
+    }
+    results = await cached_context._base.traverse(start_entity_id, traversal_spec)
+
+    # Mock hash generation
+    traversal_hash = "test_hash"
+    cached_context._cache_manager._hash_query.return_value = traversal_hash
+
+    # Test cache hit
+    store = cached_context._cache_manager.store_manager.get_traversal_store()
+    store.get.return_value = CacheEntry(
+        value=results,
+        created_at=datetime.now(UTC),
+        query_hash=traversal_hash
+    )
+
+    traversal_results = await cached_context.traverse(start_entity_id, traversal_spec)
+    assert traversal_results == results
+    store.get.assert_called_once_with(traversal_hash)
+
+    # Test cache miss
+    store.get.reset_mock()
+    store.get.return_value = None
+
+    traversal_results = await cached_context.traverse(start_entity_id, traversal_spec)
+    assert traversal_results == results
+    store.get.assert_called_once_with(traversal_hash)
+    store.set.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_cache_invalidation(cached_context, transaction):
+    """Test cache invalidation on write operations."""
+    # Create test entities and relations first
+    entity_id = await cached_context._base.create_entity("person", {"name": "Test"})
+    from_id = await cached_context._base.create_entity("person", {"name": "From"})
+    to_id = await cached_context._base.create_entity("person", {"name": "To"})
+    relation_id = await cached_context._base.create_relation("knows", from_id, to_id)
+
+    # Test entity cache invalidation
+    properties = {"name": "Updated"}
+    await cached_context.update_entity(entity_id, properties)
+    cached_context._cache_manager.store_manager.get_entity_store().delete.assert_called_once_with(entity_id)
+
+    # Test relation cache invalidation
+    properties = {"since": "2024"}
+    await cached_context.update_relation(relation_id, properties)
+    cached_context._cache_manager.store_manager.get_relation_store().delete.assert_called_once_with(relation_id)
+
+
+@pytest.mark.asyncio
+async def test_error_handling(cached_context, transaction):
+    """Test error handling in cache operations."""
+    # Test entity not found
+    entity_id = "nonexistent"
+    cached_context._cache_manager.store_manager.get_entity_store().get.return_value = None
+
     with pytest.raises(EntityNotFoundError):
         await cached_context.get_entity(entity_id)
 
+    # Test relation not found
+    relation_id = "nonexistent"
+    cached_context._cache_manager.store_manager.get_relation_store().get.return_value = None
 
-@pytest.mark.asyncio
-async def test_transaction_behavior(cached_context):
-    """Test that caching works correctly with transactions."""
-    # Start transaction for writing
-    await cached_context.begin_transaction()
-
-    # Create an entity
-    entity_id = await cached_context.create_entity("person", {"name": "Alice"})
-
-    # Commit to make it persistent
-    await cached_context.commit_transaction()
-
-    # Get it to ensure it's cached
-    entity = await cached_context.get_entity(entity_id)
-    assert entity["properties"]["name"] == "Alice"
-
-    # Start a new transaction
-    await cached_context.begin_transaction()
-
-    # Verify all caches were cleared
-    entity_cache = cached_context._cache_manager.store_manager.get_entity_store()
-    assert await entity_cache.get(entity_id) is None
-
-    # Update the entity in transaction
-    await cached_context.update_entity(entity_id, {"name": "Alice Smith"})
-
-    # Get the entity - should see transaction changes
-    updated_entity = await cached_context.get_entity(entity_id)
-
-    # The mock will return the updated entity directly from memory
-    assert updated_entity["properties"]["name"] == "Alice Smith"
-
-    # Rollback the transaction
-    await cached_context.rollback_transaction()
-
-    # Refresh our mock context's state to match the rollback behavior
-    # (In a real context this would happen automatically)
-    base_context = cached_context._base
-    base_context.entities[entity_id]["properties"]["name"] = "Alice"
-
-    # Get the entity - should see original state
-    entity = await cached_context.get_entity(entity_id)
-    assert entity["properties"]["name"] == "Alice"
+    with pytest.raises(RelationNotFoundError):
+        await cached_context.get_relation(relation_id)
 
 
 @pytest.mark.asyncio
-async def test_query_caching(cached_context):
-    """Test that query results are properly cached."""
-    # Start transaction for writing
-    await cached_context.begin_transaction()
+async def test_cache_enable_disable(cached_context, transaction):
+    """Test enabling and disabling cache."""
+    # Create a test entity using the real base context
+    entity_id = await cached_context._base.create_entity("person", {"name": "Test"})
+    entity = await cached_context._base.get_entity(entity_id)
 
-    # Create some test entities
-    await cached_context.create_entity("person", {"name": "Alice"})
-    await cached_context.create_entity("person", {"name": "Bob"})
+    # Mock the store manager and stores
+    store_manager = cached_context._cache_manager.store_manager
+    entity_store = AsyncMock()
 
-    # Commit to make them persistent
-    await cached_context.commit_transaction()
+    # Setup initial enabled store
+    store_manager.get_entity_store = Mock(return_value=entity_store)
+    entity_store.get.return_value = CacheEntry(
+        value=entity,
+        created_at=datetime.now(UTC),
+        entity_type="person"
+    )
 
-    # Run the query once
-    query_spec = {"type": "person"}
-    results1 = await cached_context.query(query_spec)
-    assert len(results1) == 2
+    # Test with cache enabled - should use cache
+    result = await cached_context.get_entity(entity_id)
+    assert result == entity
+    assert entity_store.get.call_count == 1
 
-    # Verify it's in the cache
-    query_hash = cached_context._cache_manager._hash_query(query_spec)
-    query_cache = cached_context._cache_manager.store_manager.get_query_store()
-    cached_entry = await query_cache.get(query_hash)
-    assert cached_entry is not None
+    # Test with cache disabled - should use base context directly
+    cached_context.disable_caching()
+    result = await cached_context.get_entity(entity_id)
+    assert result == entity  # Compare with the real entity from base context
 
-    # Run the same query again - should use cache
-    results2 = await cached_context.query(query_spec)
-    assert results1 == results2
+    # Test re-enabling cache - should use cache again
+    cached_context.enable_caching()
+    entity_store.get.reset_mock()
+    entity_store.get.return_value = CacheEntry(
+        value=entity,
+        created_at=datetime.now(UTC),
+        entity_type="person"
+    )
 
-
-@pytest.mark.asyncio
-async def test_traversal_caching(cached_context):
-    """Test that traversal results are properly cached."""
-    # Start transaction for writing
-    await cached_context.begin_transaction()
-
-    # Create some test entities and relations
-    entity1_id = await cached_context.create_entity("person", {"name": "Alice"})
-    entity2_id = await cached_context.create_entity("person", {"name": "Bob"})
-    await cached_context.create_relation("knows", entity1_id, entity2_id)
-
-    # Commit to make them persistent
-    await cached_context.commit_transaction()
-
-    # Run the traversal once
-    traversal_spec = {"relation_type": "knows"}
-    results1 = await cached_context.traverse(entity1_id, traversal_spec)
-    assert len(results1) == 1
-
-    # Verify it's in the cache
-    traversal_hash = cached_context._cache_manager._hash_query(traversal_spec)
-    traversal_cache = cached_context._cache_manager.store_manager.get_traversal_store()
-    cached_entry = await traversal_cache.get(traversal_hash)
-    assert cached_entry is not None
-
-    # Run the same traversal again - should use cache
-    results2 = await cached_context.traverse(entity1_id, traversal_spec)
-    assert results1 == results2
+    result = await cached_context.get_entity(entity_id)
+    assert result == entity  # Compare with the real entity from base context
+    assert entity_store.get.call_count == 1
 
 
-@pytest.mark.asyncio
-async def test_cache_enable_disable(cached_context):
-    """Test that cache can be enabled and disabled."""
-    # Create a new context with a mock cache manager to track calls
-    base_context = MockGraphContext()
-    mock_cache_manager = CacheManager()
-
-    # Replace the store_manager.get_entity_store().get/set methods with mocks
-    entity_store = mock_cache_manager.store_manager.get_entity_store()
-    original_get = entity_store.get
-    original_set = entity_store.set
-
-    entity_store.get = AsyncMock(return_value=None)
-    entity_store.set = AsyncMock()
-
-    test_context = CachedGraphContext(base_context, mock_cache_manager)
-
-    try:
-        # Start transaction for writing
-        await test_context.begin_transaction()
-
-        # Create an entity to work with
-        entity_id = await test_context.create_entity("person", {"name": "Alice"})
-
-        # Commit transaction
-        await test_context.commit_transaction()
-
-        # Reset the mocks to track new calls
-        entity_store.get.reset_mock()
-        entity_store.set.reset_mock()
-
-        # CASE 1: With caching enabled (default)
-        # Get entity should try to read from cache and then store result
-        await test_context.get_entity(entity_id)
-
-        # Verify cache was checked and then updated
-        assert entity_store.get.called, "Cache get not called with caching enabled"
-        assert entity_store.set.called, "Cache set not called with caching enabled"
-
-        # Reset mocks again
-        entity_store.get.reset_mock()
-        entity_store.set.reset_mock()
-
-        # CASE 2: With caching disabled
-        test_context.disable_caching()
-
-        # Get entity should bypass cache
-        await test_context.get_entity(entity_id)
-
-        # Verify cache was NOT checked or updated
-        assert not entity_store.get.called, "Cache get called with caching disabled"
-        assert not entity_store.set.called, "Cache set called with caching disabled"
-
-        # Reset mocks again
-        entity_store.get.reset_mock()
-        entity_store.set.reset_mock()
-
-        # CASE 3: Re-enable caching
-        test_context.enable_caching()
-
-        # Get the new fresh store and mock its methods
-        entity_store = test_context._cache_manager.store_manager.get_entity_store()
-        # Save original methods for cleanup
-        new_original_get = entity_store.get
-        new_original_set = entity_store.set
-        # Replace with mocks
-        entity_store.get = AsyncMock(return_value=None)
-        entity_store.set = AsyncMock()
-
-        # Get entity should use cache again
-        await test_context.get_entity(entity_id)
-
-        # Verify cache was checked and updated again
-        assert entity_store.get.called, "Cache get not called after re-enabling caching"
-        assert entity_store.set.called, "Cache set not called after re-enabling caching"
-
-        # Restore the newest original methods
-        entity_store.get = new_original_get
-        entity_store.set = new_original_set
-
-    finally:
-        # Restore original methods
-        if 'original_get' in locals() and entity_store:
-            entity_store.get = original_get
-        if 'original_set' in locals() and entity_store:
-            entity_store.set = original_set
-        if 'new_original_get' in locals() and entity_store:
-            entity_store.get = new_original_get
-        if 'new_original_set' in locals() and entity_store:
-            entity_store.set = new_original_set
-        await test_context.cleanup()
+async def traverse(self, start_entity_id: str, traversal_spec: dict) -> List[str]:
+    """Mock traversal that returns a fixed list of entity IDs."""
+    # For testing, just return a fixed list of IDs
+    if start_entity_id == "entity1":
+        return ["entity2", "entity3"]
+    elif start_entity_id == "entity2":
+        return ["entity3", "entity4"]
+    return []

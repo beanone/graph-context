@@ -5,6 +5,7 @@ from datetime import datetime, UTC
 
 from graph_context.caching.cache_store_manager import CacheStoreManager
 from graph_context.caching.config import CacheConfig
+from graph_context.caching.cache_store import CacheEntry
 
 
 @pytest.fixture
@@ -65,3 +66,56 @@ async def test_store_separation(store_manager):
     for i in range(len(stores)):
         for j in range(i + 1, len(stores)):
             assert stores[i] is not stores[j]
+
+
+@pytest.mark.asyncio
+async def test_clear_all(store_manager):
+    """Test clearing all cache stores."""
+    # Set up test data in each store
+    entity_store = store_manager.get_entity_store()
+    relation_store = store_manager.get_relation_store()
+    query_store = store_manager.get_query_store()
+    traversal_store = store_manager.get_traversal_store()
+
+    # Create test entries
+    entity_entry = CacheEntry(
+        value={"id": "test_entity"},
+        created_at=datetime.now(UTC),
+        entity_type="test_type"
+    )
+    relation_entry = CacheEntry(
+        value={"id": "test_relation"},
+        created_at=datetime.now(UTC),
+        relation_type="test_type"
+    )
+    query_entry = CacheEntry(
+        value={"results": []},
+        created_at=datetime.now(UTC),
+        query_hash="test_hash"
+    )
+    traversal_entry = CacheEntry(
+        value={"results": []},
+        created_at=datetime.now(UTC),
+        query_hash="test_hash"  # Traversal uses query_hash field
+    )
+
+    # Add test data
+    await entity_store.set("test_entity", entity_entry)
+    await relation_store.set("test_relation", relation_entry)
+    await query_store.set("test_query", query_entry)
+    await traversal_store.set("test_traversal", traversal_entry)
+
+    # Verify data is stored
+    assert await entity_store.get("test_entity") == entity_entry
+    assert await relation_store.get("test_relation") == relation_entry
+    assert await query_store.get("test_query") == query_entry
+    assert await traversal_store.get("test_traversal") == traversal_entry
+
+    # Clear all stores
+    await store_manager.clear_all()
+
+    # Verify all stores are cleared
+    assert await entity_store.get("test_entity") is None
+    assert await relation_store.get("test_relation") is None
+    assert await query_store.get("test_query") is None
+    assert await traversal_store.get("test_traversal") is None
