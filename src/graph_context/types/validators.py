@@ -103,26 +103,7 @@ def validate_number(
                 constraint="type"
             )
     elif property_type == PropertyType.FLOAT:
-        if not isinstance(value, (int, float)):
-            raise ValidationError(
-                "Value must be a number",
-                value=value,
-                constraint="type"
-            )
-        value = float(value)
-        # Validate special float values
-        if math.isnan(value):
-            raise ValidationError(
-                "NaN values are not allowed",
-                value=value,
-                constraint="type"
-            )
-        if math.isinf(value):
-            raise ValidationError(
-                "Infinite values are not allowed",
-                value=value,
-                constraint="type"
-            )
+        value = _validate_float_value(value)
 
     if constraints:
         if "minimum" in constraints and value < constraints["minimum"]:
@@ -137,6 +118,30 @@ def validate_number(
                 f"maximum constraint: Value must be at most {constraints['maximum']}",
                 value=value,
                 constraint="maximum"
+            )
+
+    return value
+
+def _validate_float_value(value):
+    if not isinstance(value, (int, float)) or isinstance(value, bool) or value==None:
+        raise ValidationError(
+                "Value must be a number",
+                value=value,
+                constraint="type"
+            )
+    value = float(value)
+        # Validate special float values
+    if math.isnan(value):
+        raise ValidationError(
+                "NaN values are not allowed",
+                value=value,
+                constraint="type"
+            )
+    if math.isinf(value):
+        raise ValidationError(
+                "Infinite values are not allowed",
+                value=value,
+                constraint="type"
             )
 
     return value
@@ -350,35 +355,38 @@ def validate_dict(
                 )
 
         if "properties" in constraints:
-            properties = constraints["properties"]
-            for prop_name, prop_def in properties.items():
-                if prop_def.get("required", False) and prop_name not in value:
-                    raise ValidationError(
+            _validate_constraints(value, constraints)
+
+    return value
+
+def _validate_constraints(value, constraints):
+    properties = constraints["properties"]
+    for prop_name, prop_def in properties.items():
+        if prop_def.get("required", False) and prop_name not in value:
+            raise ValidationError(
                         f"required constraint: Property '{prop_name}' is missing",
                         field=prop_name,
                         constraint="required"
                     )
 
-                if prop_name in value:
-                    prop_type = prop_def["type"]
-                    prop_constraints = prop_def.get("constraints")
-                    try:
-                        validator = _PROPERTY_VALIDATORS.get(prop_type)
-                        if validator is None:
-                            raise ValidationError(
+        if prop_name in value:
+            prop_type = prop_def["type"]
+            prop_constraints = prop_def.get("constraints")
+            try:
+                validator = _PROPERTY_VALIDATORS.get(prop_type)
+                if validator is None:
+                    raise ValidationError(
                                 f"Unsupported property type: {prop_type}",
                                 constraint="type"
                             )
-                        value[prop_name] = validator(value[prop_name], prop_constraints)
-                    except ValidationError as e:
-                        raise ValidationError(
+                value[prop_name] = validator(value[prop_name], prop_constraints)
+            except ValidationError as e:
+                raise ValidationError(
                             f"Invalid value for property '{prop_name}': {e!s}",
                             field=prop_name,
                             value=value[prop_name],
                             constraint=e.details.get("constraint")
                         ) from e
-
-    return value
 
 def validate_property_value(
     value: Any,

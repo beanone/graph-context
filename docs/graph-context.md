@@ -23,19 +23,23 @@ graph-context/
 ├── src/
 │   ├── graph_context/
 │   │   ├── __init__.py
-│   │   ├── interface.py      # Core GraphContext abstract base class
-│   │   ├── context_base.py          # Common implementations
-│   │   └── exceptions.py     # Context-specific exceptions
-│   │   ├── types/
-│   │   │   ├── __init__.py
-│   │   │   ├── type_base.py          # Base type definitions
-│   │   │   └── validators.py     # Type validation logic
+│   │   ├── interface.py        # Core GraphContext interface
+│   │   ├── store.py           # GraphStore interface and factory
+│   │   ├── context_base.py    # Base implementation of GraphContext
+│   │   ├── event_system.py    # Event system implementation
+│   │   ├── exceptions.py      # Context-specific exceptions
+│   │   └── types/
+│   │       ├── __init__.py
+│   │       ├── type_base.py   # Base type definitions
+│   │       └── validators.py   # Type validation logic
 │   └── __init__.py
 └── tests/
     ├── graph_context/
     │   ├── __init__.py
     │   ├── test_interface.py
-    │   └── test_context_base.py
+    │   ├── test_context_base.py
+    │   ├── test_store.py
+    │   └── test_event_system.py
     └── types/
         ├── __init__.py
         └── test_type_base.py
@@ -48,6 +52,7 @@ graph-context/
 ```python
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Any, TypeVar, Generic
+from .types.type_base import Entity, Relation, QuerySpec, TraversalSpec
 
 T = TypeVar('T')
 
@@ -70,7 +75,7 @@ class GraphContext(ABC, Generic[T]):
     async def get_entity(
         self,
         entity_id: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[Entity]:
         """Retrieve an entity by ID."""
         pass
 
@@ -106,7 +111,7 @@ class GraphContext(ABC, Generic[T]):
     async def get_relation(
         self,
         relation_id: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[Relation]:
         """Retrieve a relation by ID."""
         pass
 
@@ -130,8 +135,8 @@ class GraphContext(ABC, Generic[T]):
     @abstractmethod
     async def query(
         self,
-        query_spec: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        query_spec: QuerySpec
+    ) -> List[Entity]:
         """Execute a query against the graph."""
         pass
 
@@ -139,11 +144,283 @@ class GraphContext(ABC, Generic[T]):
     async def traverse(
         self,
         start_entity: str,
-        traversal_spec: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        traversal_spec: TraversalSpec
+    ) -> List[Entity]:
         """Traverse the graph starting from a given entity."""
         pass
 ```
+
+### Graph Store Interface
+
+The GraphStore interface defines the contract for actual data persistence:
+
+```python
+from abc import ABC, abstractmethod
+from typing import Dict, List, Optional, Any
+from .types.type_base import Entity, Relation, QuerySpec, TraversalSpec
+
+class GraphStore(ABC):
+    """
+    Abstract interface for graph data storage operations.
+    Concrete implementations handle the actual persistence of entities and relations.
+    """
+
+    @abstractmethod
+    async def create_entity(
+        self,
+        entity_type: str,
+        properties: Dict[str, Any]
+    ) -> str:
+        """Create a new entity in the graph."""
+        pass
+
+    @abstractmethod
+    async def get_entity(
+        self,
+        entity_id: str
+    ) -> Optional[Entity]:
+        """Retrieve an entity by ID."""
+        pass
+
+    @abstractmethod
+    async def update_entity(
+        self,
+        entity_id: str,
+        properties: Dict[str, Any]
+    ) -> bool:
+        """Update an existing entity."""
+        pass
+
+    @abstractmethod
+    async def delete_entity(
+        self,
+        entity_id: str
+    ) -> bool:
+        """Delete an entity from the graph."""
+        pass
+
+    @abstractmethod
+    async def create_relation(
+        self,
+        relation_type: str,
+        from_entity: str,
+        to_entity: str,
+        properties: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """Create a new relation between entities."""
+        pass
+
+    @abstractmethod
+    async def get_relation(
+        self,
+        relation_id: str
+    ) -> Optional[Relation]:
+        """Retrieve a relation by ID."""
+        pass
+
+    @abstractmethod
+    async def update_relation(
+        self,
+        relation_id: str,
+        properties: Dict[str, Any]
+    ) -> bool:
+        """Update an existing relation."""
+        pass
+
+    @abstractmethod
+    async def delete_relation(
+        self,
+        relation_id: str
+    ) -> bool:
+        """Delete a relation from the graph."""
+        pass
+
+    @abstractmethod
+    async def query(
+        self,
+        query_spec: QuerySpec
+    ) -> List[Entity]:
+        """Execute a query against the graph."""
+        pass
+
+    @abstractmethod
+    async def traverse(
+        self,
+        start_entity: str,
+        traversal_spec: TraversalSpec
+    ) -> List[Entity]:
+        """Traverse the graph starting from a given entity."""
+        pass
+
+    @abstractmethod
+    async def begin_transaction(self) -> None:
+        """Begin a storage transaction."""
+        pass
+
+    @abstractmethod
+    async def commit_transaction(self) -> None:
+        """Commit the current transaction."""
+        pass
+
+    @abstractmethod
+    async def rollback_transaction(self) -> None:
+        """Rollback the current transaction."""
+        pass
+```
+
+### Event System
+
+The event system enables features to react to graph operations without coupling to specific implementations:
+
+```python
+from enum import Enum
+from typing import Any, Callable, Awaitable, Dict
+from pydantic import BaseModel
+from datetime import datetime
+
+class GraphEvent(str, Enum):
+    """Core graph operation events."""
+    ENTITY_READ = "entity:read"
+    ENTITY_WRITE = "entity:write"
+    ENTITY_DELETE = "entity:delete"
+    ENTITY_BULK_WRITE = "entity:bulk_write"
+    ENTITY_BULK_DELETE = "entity:bulk_delete"
+    RELATION_READ = "relation:read"
+    RELATION_WRITE = "relation:write"
+    RELATION_DELETE = "relation:delete"
+    RELATION_BULK_WRITE = "relation:bulk_write"
+    RELATION_BULK_DELETE = "relation:bulk_delete"
+    QUERY_EXECUTED = "query:executed"
+    TRAVERSAL_EXECUTED = "traversal:executed"
+    SCHEMA_MODIFIED = "schema:modified"
+    TYPE_MODIFIED = "type:modified"
+    TRANSACTION_BEGIN = "transaction:begin"
+    TRANSACTION_COMMIT = "transaction:commit"
+    TRANSACTION_ROLLBACK = "transaction:rollback"
+
+class EventMetadata(BaseModel):
+    """Metadata for graph events."""
+    entity_type: Optional[str] = None
+    relation_type: Optional[str] = None
+    operation_id: str
+    timestamp: datetime
+    query_spec: Optional[Dict[str, Any]] = None
+    traversal_spec: Optional[Dict[str, Any]] = None
+    is_bulk: bool = False
+    affected_count: Optional[int] = None
+
+class EventContext(BaseModel):
+    """Context for a graph event."""
+    event: GraphEvent
+    metadata: EventMetadata
+    data: Dict[str, Any]
+
+EventHandler = Callable[[EventContext], Awaitable[None]]
+
+class EventSystem:
+    """Simple pub/sub system for graph operations."""
+
+    def __init__(self) -> None:
+        """Initialize the event system."""
+        self._handlers: dict[GraphEvent, list[EventHandler]] = defaultdict(list)
+        self._enabled = True
+
+    async def subscribe(self, event: GraphEvent, handler: EventHandler) -> None:
+        """Subscribe to a specific graph event."""
+        self._handlers[event].append(handler)
+
+    async def unsubscribe(self, event: GraphEvent, handler: EventHandler) -> None:
+        """Unsubscribe from a specific graph event."""
+        try:
+            self._handlers[event].remove(handler)
+        except ValueError:
+            pass
+
+    async def emit(self, event: GraphEvent, metadata: Optional[EventMetadata] = None, **data: Any) -> None:
+        """Emit a graph event to all subscribers."""
+        if not self._enabled:
+            return
+
+        if metadata is None:
+            metadata = EventMetadata(
+                operation_id=str(uuid4()),
+                timestamp=datetime.utcnow()
+            )
+
+        context = EventContext(event=event, metadata=metadata, data=data)
+
+        for handler in self._handlers[event]:
+            try:
+                await handler(context)
+            except Exception:
+                continue
+```
+
+### Store Configuration and Factory
+
+The GraphStore implementation is loaded through a factory that handles configuration internally:
+
+```python
+from typing import Dict, Type
+
+class GraphStoreFactory:
+    """Factory for creating GraphStore instances from configuration."""
+
+    _stores: Dict[str, Type[GraphStore]] = {}
+
+    @classmethod
+    def register(cls, store_type: str, store_class: Type[GraphStore]) -> None:
+        """Register a store implementation."""
+        cls._stores[store_type] = store_class
+
+    @classmethod
+    def create(cls) -> GraphStore:
+        """Create a GraphStore instance based on internal configuration."""
+        config = cls._load_config()  # Load from env vars, config files, etc.
+        if config.type not in cls._stores:
+            raise ValueError(f"Unknown store type: {config.type}")
+        return cls._stores[config.type](config.config)
+
+    @classmethod
+    def _load_config(cls) -> 'StoreConfig':
+        """Load store configuration from environment/config files."""
+        # Configuration can be loaded from:
+        # - Environment variables
+        # - Configuration files
+        # - System settings
+        # - etc.
+        pass
+
+class BaseGraphContext(GraphContext):
+    """Base implementation of GraphContext interface."""
+
+    def __init__(self):
+        self._store = GraphStoreFactory.create()  # Factory handles configuration
+        self._events = EventSystem()
+        self._entity_types = {}
+        self._relation_types = {}
+        self._in_transaction = False
+
+    async def create_entity(self, entity_type: str, properties: Dict[str, Any]) -> str:
+        """Create a new entity in the graph."""
+        self._check_transaction()
+        validated_props = self.validate_entity(entity_type, properties)
+
+        entity_id = await self._store.create_entity(entity_type, validated_props)
+
+        await self._events.emit(
+            GraphEvent.ENTITY_WRITE,
+            entity_id=entity_id,
+            entity_type=entity_type
+        )
+
+        return entity_id
+
+    # Other GraphContext methods follow similar pattern:
+    # 1. Validate state/input
+    # 2. Delegate to store
+    # 3. Emit appropriate events
+    # 4. Return results
 
 ## Implementation Guidelines
 

@@ -1,0 +1,10 @@
+[run]
+branch = True
+source = src
+omit = src/graph_context/interface.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    @abstract
+    pass

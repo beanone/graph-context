@@ -18,19 +18,6 @@ class GraphContext(ABC):
     """
 
     @abstractmethod
-    async def initialize(self) -> None:
-        """
-        Initialize the graph context.
-
-        This method should be called before any other operations.
-        It should set up any necessary connections, create indexes, etc.
-
-        Raises:
-            GraphContextError: If initialization fails
-        """
-        pass
-
-    @abstractmethod
     async def cleanup(self) -> None:
         """
         Clean up the graph context.
