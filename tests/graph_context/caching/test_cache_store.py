@@ -14,15 +14,18 @@ def cache_store():
     """Create a cache store instance for testing."""
     return CacheStore(maxsize=100, ttl=1)  # 1 second TTL for testing
 
+
 @pytest.fixture
 def non_ttl_cache_store():
     """Create a cache store without TTL for testing."""
     return CacheStore(maxsize=100, ttl=None)
 
+
 @pytest.fixture
 def sample_entity():
     """Create a sample entity for testing."""
     return Entity(id="test123", type="person", properties={"name": "Test Person"})
+
 
 @pytest.fixture
 def sample_relation():
@@ -32,12 +35,14 @@ def sample_relation():
         type="knows",
         from_entity="person1",
         to_entity="person2",
-        properties={}
+        properties={},
     )
+
 
 @pytest.fixture
 def mock_relation():
     """Create a mock relation for entity relation tracking."""
+
     class MockRelation:
         def __init__(self):
             self.from_entity = "person1"
@@ -48,14 +53,13 @@ def mock_relation():
 
     return MockRelation()
 
+
 @pytest.mark.asyncio
 async def test_cache_set_get(cache_store, sample_entity):
     """Test basic cache set and get operations."""
     key = "test:key"
     entry = CacheEntry(
-        value=sample_entity,
-        entity_type="person",
-        operation_id=str(uuid4())
+        value=sample_entity, entity_type="person", operation_id=str(uuid4())
     )
 
     # Set the entry
@@ -67,20 +71,20 @@ async def test_cache_set_get(cache_store, sample_entity):
     assert result.value == sample_entity
     assert result.entity_type == "person"
 
+
 @pytest.mark.asyncio
 async def test_non_existent_key(cache_store):
     """Test getting a non-existent key."""
     result = await cache_store.get("non_existent_key")
     assert result is None
 
+
 @pytest.mark.asyncio
 async def test_cache_non_ttl(non_ttl_cache_store, sample_entity):
     """Test cache without TTL."""
     key = "test:no_ttl"
     entry = CacheEntry(
-        value=sample_entity,
-        entity_type="person",
-        operation_id=str(uuid4())
+        value=sample_entity, entity_type="person", operation_id=str(uuid4())
     )
 
     # Set the entry
@@ -94,14 +98,13 @@ async def test_cache_non_ttl(non_ttl_cache_store, sample_entity):
     assert result is not None
     assert result.value == sample_entity
 
+
 @pytest.mark.asyncio
 async def test_cache_ttl(cache_store, sample_entity):
     """Test TTL expiration."""
     key = "test:ttl"
     entry = CacheEntry(
-        value=sample_entity,
-        entity_type="person",
-        operation_id=str(uuid4())
+        value=sample_entity, entity_type="person", operation_id=str(uuid4())
     )
 
     # Set the entry
@@ -114,14 +117,13 @@ async def test_cache_ttl(cache_store, sample_entity):
     result = await cache_store.get(key)
     assert result is None
 
+
 @pytest.mark.asyncio
 async def test_cache_delete(cache_store, sample_entity):
     """Test cache entry deletion."""
     key = "test:delete"
     entry = CacheEntry(
-        value=sample_entity,
-        entity_type="person",
-        operation_id=str(uuid4())
+        value=sample_entity, entity_type="person", operation_id=str(uuid4())
     )
 
     # Set and verify
@@ -132,20 +134,28 @@ async def test_cache_delete(cache_store, sample_entity):
     await cache_store.delete(key)
     assert await cache_store.get(key) is None
 
+
 @pytest.mark.asyncio
 async def test_delete_missing_key(cache_store):
     """Test deleting a non-existent key doesn't raise an error."""
     # Should not raise an exception
     await cache_store.delete("non_existent_key")
 
+
 @pytest.mark.asyncio
 async def test_cache_clear(cache_store, sample_entity):
     """Test clearing all cache entries."""
     # Add multiple entries
     entries = {
-        "key1": CacheEntry(value=sample_entity, entity_type="person", operation_id=str(uuid4())),
-        "key2": CacheEntry(value=sample_entity, entity_type="person", operation_id=str(uuid4())),
-        "key3": CacheEntry(value=sample_entity, entity_type="person", operation_id=str(uuid4()))
+        "key1": CacheEntry(
+            value=sample_entity, entity_type="person", operation_id=str(uuid4())
+        ),
+        "key2": CacheEntry(
+            value=sample_entity, entity_type="person", operation_id=str(uuid4())
+        ),
+        "key3": CacheEntry(
+            value=sample_entity, entity_type="person", operation_id=str(uuid4())
+        ),
     }
 
     for key, entry in entries.items():
@@ -165,16 +175,23 @@ async def test_cache_clear(cache_store, sample_entity):
     assert len(cache_store._entity_relations) == 0
     assert len(cache_store._relation_entities) == 0
 
+
 @pytest.mark.asyncio
 async def test_type_dependencies(cache_store, sample_entity):
     """Test type-based dependency tracking and invalidation."""
     # Add entries of different types
     person_entries = {
-        "person:1": CacheEntry(value=sample_entity, entity_type="person", operation_id=str(uuid4())),
-        "person:2": CacheEntry(value=sample_entity, entity_type="person", operation_id=str(uuid4()))
+        "person:1": CacheEntry(
+            value=sample_entity, entity_type="person", operation_id=str(uuid4())
+        ),
+        "person:2": CacheEntry(
+            value=sample_entity, entity_type="person", operation_id=str(uuid4())
+        ),
     }
     org_entries = {
-        "org:1": CacheEntry(value=sample_entity, entity_type="organization", operation_id=str(uuid4()))
+        "org:1": CacheEntry(
+            value=sample_entity, entity_type="organization", operation_id=str(uuid4())
+        )
     }
 
     # Set all entries
@@ -198,11 +215,13 @@ async def test_type_dependencies(cache_store, sample_entity):
     assert len(cache_store._type_dependencies["person"]) == 0
     assert len(cache_store._type_dependencies["organization"]) == 1
 
+
 @pytest.mark.asyncio
 async def test_invalidate_non_existent_type(cache_store):
     """Test invalidating a type that doesn't exist."""
     # Should not raise an exception
     await cache_store.invalidate_type("non_existent_type")
+
 
 @pytest.mark.asyncio
 async def test_query_dependencies(cache_store, sample_entity):
@@ -214,7 +233,7 @@ async def test_query_dependencies(cache_store, sample_entity):
         value=sample_entity,
         entity_type="person",
         operation_id=str(uuid4()),
-        query_hash=query_hash
+        query_hash=query_hash,
     )
 
     await cache_store.set("query:result", entry)
@@ -231,11 +250,13 @@ async def test_query_dependencies(cache_store, sample_entity):
     # Verify dependencies are cleaned up
     assert len(cache_store._query_dependencies[query_hash]) == 0
 
+
 @pytest.mark.asyncio
 async def test_invalidate_non_existent_query(cache_store):
     """Test invalidating a query that doesn't exist."""
     # Should not raise an exception
     await cache_store.invalidate_query("non_existent_query_hash")
+
 
 @pytest.mark.asyncio
 async def test_traversal_dependencies(cache_store, sample_entity):
@@ -245,8 +266,7 @@ async def test_traversal_dependencies(cache_store, sample_entity):
     dependency_types = {"person", "organization"}
 
     entry = CacheEntry(
-        value={"results": ["person1", "person2"]},
-        operation_id=str(uuid4())
+        value={"results": ["person1", "person2"]}, operation_id=str(uuid4())
     )
 
     # Set the traversal with dependencies on types
@@ -262,6 +282,7 @@ async def test_traversal_dependencies(cache_store, sample_entity):
     # Verify traversal is invalidated
     assert await cache_store.get(traversal_key) is None
 
+
 @pytest.mark.asyncio
 async def test_reverse_dependencies(cache_store, sample_entity):
     """Test reverse dependency tracking and invalidation."""
@@ -270,15 +291,15 @@ async def test_reverse_dependencies(cache_store, sample_entity):
     dependent_keys = {"dep:1", "dep:2", "dep:3"}
 
     main_entry = CacheEntry(
-        value=sample_entity,
-        entity_type="person",
-        operation_id=str(uuid4())
+        value=sample_entity, entity_type="person", operation_id=str(uuid4())
     )
 
     # Set main entry and dependents
     await cache_store.set(main_key, main_entry)
     for key in dependent_keys:
-        entry = CacheEntry(value=sample_entity, entity_type="person", operation_id=str(uuid4()))
+        entry = CacheEntry(
+            value=sample_entity, entity_type="person", operation_id=str(uuid4())
+        )
         await cache_store.set(key, entry, dependencies={main_key})
 
     # Verify initial state
@@ -294,15 +315,14 @@ async def test_reverse_dependencies(cache_store, sample_entity):
     # Verify dependencies are cleaned up
     assert len(cache_store._reverse_dependencies[main_key]) == 0
 
+
 @pytest.mark.asyncio
 async def test_entity_relation_dependencies(cache_store, mock_relation):
     """Test entity-relation dependency tracking and invalidation."""
     # Add a relation entry with the mock relation that has from_entity and to_entity attributes
     relation_key = "relation:knows1"
     relation_entry = CacheEntry(
-        value=mock_relation,
-        relation_type="knows",
-        operation_id=str(uuid4())
+        value=mock_relation, relation_type="knows", operation_id=str(uuid4())
     )
 
     await cache_store.set(relation_key, relation_entry)
@@ -323,22 +343,19 @@ async def test_entity_relation_dependencies(cache_store, mock_relation):
     # So it won't be automatically deleted - just check that tracking is maintained
     assert "person1" in cache_store._entity_relations
 
+
 @pytest.mark.asyncio
 async def test_relation_entity_dependencies(cache_store, sample_entity, mock_relation):
     """Test relation-entity dependency tracking and invalidation."""
     # Set up an entity and a relation
     entity_key = "entity:person1"
     entity_entry = CacheEntry(
-        value=sample_entity,
-        entity_type="person",
-        operation_id=str(uuid4())
+        value=sample_entity, entity_type="person", operation_id=str(uuid4())
     )
 
     relation_key = "relation:knows1"
     relation_entry = CacheEntry(
-        value=mock_relation,
-        relation_type="knows",
-        operation_id=str(uuid4())
+        value=mock_relation, relation_type="knows", operation_id=str(uuid4())
     )
 
     await cache_store.set(entity_key, entity_entry)
@@ -350,6 +367,7 @@ async def test_relation_entity_dependencies(cache_store, sample_entity, mock_rel
     # Verify relation entities tracking is cleaned up
     assert relation_key not in cache_store._relation_entities
 
+
 @pytest.mark.asyncio
 async def test_query_type_dependencies(cache_store, sample_entity):
     """Test query dependencies on types."""
@@ -359,7 +377,7 @@ async def test_query_type_dependencies(cache_store, sample_entity):
         value=[sample_entity],
         query_hash="hash123",
         entity_type="person",
-        operation_id=str(uuid4())
+        operation_id=str(uuid4()),
     )
 
     await cache_store.set(query_key, query_entry, dependencies={"person"})
@@ -373,6 +391,7 @@ async def test_query_type_dependencies(cache_store, sample_entity):
     # Verify the query result is invalidated
     assert await cache_store.get(query_key) is None
 
+
 @pytest.mark.asyncio
 async def test_query_traversal_key_invalidation(cache_store, sample_entity):
     """Test invalidation of queries/traversals when invalidating type dependencies."""
@@ -384,12 +403,11 @@ async def test_query_traversal_key_invalidation(cache_store, sample_entity):
         value=[sample_entity],
         query_hash="hash456",
         entity_type="organization",
-        operation_id=str(uuid4())
+        operation_id=str(uuid4()),
     )
 
     traversal_entry = CacheEntry(
-        value={"results": ["org1", "org2"]},
-        operation_id=str(uuid4())
+        value={"results": ["org1", "org2"]}, operation_id=str(uuid4())
     )
 
     # Set entries with dependencies
@@ -403,21 +421,20 @@ async def test_query_traversal_key_invalidation(cache_store, sample_entity):
     assert await cache_store.get(query_key) is None
     assert await cache_store.get(traversal_key) is None
 
+
 @pytest.mark.asyncio
-async def test_delete_entity_cascades_to_relations(cache_store, sample_entity, mock_relation):
+async def test_delete_entity_cascades_to_relations(
+    cache_store, sample_entity, mock_relation
+):
     """Test that deleting an entity cascades to its relations."""
     entity_key = "entity:person1"
     entity_entry = CacheEntry(
-        value=sample_entity,
-        entity_type="person",
-        operation_id=str(uuid4())
+        value=sample_entity, entity_type="person", operation_id=str(uuid4())
     )
 
     relation_key = "relation:knows1"
     relation_entry = CacheEntry(
-        value=mock_relation,
-        relation_type="knows",
-        operation_id=str(uuid4())
+        value=mock_relation, relation_type="knows", operation_id=str(uuid4())
     )
 
     # Set up entity and relation
@@ -432,6 +449,7 @@ async def test_delete_entity_cascades_to_relations(cache_store, sample_entity, m
     # as an actual entity entry - so just verify entity tracking is updated
     assert entity_key not in cache_store._entity_relations
 
+
 @pytest.mark.asyncio
 async def test_multiple_dependency_layers(cache_store, sample_entity):
     """Test multi-level dependency invalidation."""
@@ -441,21 +459,15 @@ async def test_multiple_dependency_layers(cache_store, sample_entity):
     level2_key = "level2:entry"
 
     main_entry = CacheEntry(
-        value=sample_entity,
-        entity_type="person",
-        operation_id=str(uuid4())
+        value=sample_entity, entity_type="person", operation_id=str(uuid4())
     )
 
     level1_entry = CacheEntry(
-        value=sample_entity,
-        entity_type="person",
-        operation_id=str(uuid4())
+        value=sample_entity, entity_type="person", operation_id=str(uuid4())
     )
 
     level2_entry = CacheEntry(
-        value=sample_entity,
-        entity_type="person",
-        operation_id=str(uuid4())
+        value=sample_entity, entity_type="person", operation_id=str(uuid4())
     )
 
     # Set up the dependency chain
@@ -475,15 +487,14 @@ async def test_multiple_dependency_layers(cache_store, sample_entity):
     level2_value = await cache_store.get(level2_key)
     assert level2_value is None or level2_value is not None
 
+
 @pytest.mark.asyncio
 async def test_entity_with_multiple_relations(cache_store, sample_entity):
     """Test entity with multiple relations handling during invalidation."""
     # Create an entity with multiple relations
     entity_key = "entity:center"
     entity_entry = CacheEntry(
-        value=sample_entity,
-        entity_type="person",
-        operation_id=str(uuid4())
+        value=sample_entity, entity_type="person", operation_id=str(uuid4())
     )
 
     # Create mock relations
@@ -510,9 +521,7 @@ async def test_entity_with_multiple_relations(cache_store, sample_entity):
         relation_values.append(rel_value)
 
         relation_entry = CacheEntry(
-            value=rel_value,
-            relation_type="knows",
-            operation_id=str(uuid4())
+            value=rel_value, relation_type="knows", operation_id=str(uuid4())
         )
 
         await cache_store.set(rel_key, relation_entry)
@@ -532,6 +541,7 @@ async def test_entity_with_multiple_relations(cache_store, sample_entity):
     # Verify tracking is cleaned up
     assert entity_key not in cache_store._cache
 
+
 @pytest.mark.asyncio
 async def test_bulk_operations(cache_store, sample_entity):
     """Test bulk delete operations."""
@@ -540,7 +550,9 @@ async def test_bulk_operations(cache_store, sample_entity):
     for key in keys:
         await cache_store.set(
             key,
-            CacheEntry(value=sample_entity, entity_type="person", operation_id=str(uuid4()))
+            CacheEntry(
+                value=sample_entity, entity_type="person", operation_id=str(uuid4())
+            ),
         )
 
     # Delete in bulk
@@ -550,20 +562,28 @@ async def test_bulk_operations(cache_store, sample_entity):
     for key in keys:
         assert await cache_store.get(key) is None
 
+
 @pytest.mark.asyncio
 async def test_delete_many_with_empty_set(cache_store):
     """Test calling delete_many with an empty set."""
     # Should not raise an exception
     await cache_store.delete_many(set())
 
+
 @pytest.mark.asyncio
 async def test_scan_operation(cache_store, sample_entity):
     """Test scanning cache entries."""
     # Add multiple entries
     entries = {
-        "scan:1": CacheEntry(value=sample_entity, entity_type="person", operation_id=str(uuid4())),
-        "scan:2": CacheEntry(value=sample_entity, entity_type="person", operation_id=str(uuid4())),
-        "scan:3": CacheEntry(value=sample_entity, entity_type="person", operation_id=str(uuid4()))
+        "scan:1": CacheEntry(
+            value=sample_entity, entity_type="person", operation_id=str(uuid4())
+        ),
+        "scan:2": CacheEntry(
+            value=sample_entity, entity_type="person", operation_id=str(uuid4())
+        ),
+        "scan:3": CacheEntry(
+            value=sample_entity, entity_type="person", operation_id=str(uuid4())
+        ),
     }
 
     for key, entry in entries.items():
@@ -580,6 +600,7 @@ async def test_scan_operation(cache_store, sample_entity):
         assert key in scanned
         assert scanned[key].value == entry.value
 
+
 @pytest.mark.asyncio
 async def test_scan_empty_cache(non_ttl_cache_store):
     """Test scanning an empty cache."""
@@ -589,15 +610,14 @@ async def test_scan_empty_cache(non_ttl_cache_store):
         count += 1
     assert count == 0
 
+
 @pytest.mark.asyncio
 async def test_relation_delete_cleanup(cache_store, mock_relation):
     """Test relation deletion cleans up entity relations tracking."""
     # Add a relation
     relation_key = "relation:test_deletion"
     relation_entry = CacheEntry(
-        value=mock_relation,
-        relation_type="knows",
-        operation_id=str(uuid4())
+        value=mock_relation, relation_type="knows", operation_id=str(uuid4())
     )
 
     await cache_store.set(relation_key, relation_entry)
@@ -615,6 +635,7 @@ async def test_relation_delete_cleanup(cache_store, mock_relation):
     assert relation_key not in cache_store._entity_relations.get("person1", set())
     assert relation_key not in cache_store._entity_relations.get("person2", set())
 
+
 @pytest.mark.asyncio
 async def test_invalidate_type_with_query_hash(cache_store, sample_entity):
     """Test invalidating entries with query hash."""
@@ -626,7 +647,7 @@ async def test_invalidate_type_with_query_hash(cache_store, sample_entity):
         value={"results": [sample_entity]},
         entity_type="person",
         query_hash=query_hash,
-        operation_id=str(uuid4())
+        operation_id=str(uuid4()),
     )
 
     await cache_store.set(query_key, entry)
@@ -641,6 +662,7 @@ async def test_invalidate_type_with_query_hash(cache_store, sample_entity):
     # Verify query hash tracking is cleaned up
     assert query_key not in cache_store._query_dependencies[query_hash]
 
+
 @pytest.mark.asyncio
 async def test_invalidate_dependency_missing_key(cache_store):
     """Test invalidating dependencies for non-existent key."""
@@ -649,21 +671,17 @@ async def test_invalidate_dependency_missing_key(cache_store):
 
     # No assertions needed - just checking no exception is raised
 
+
 @pytest.mark.asyncio
 async def test_entity_relation_with_invalidate_dependencies(cache_store, mock_relation):
     """Test entity-relation invalidation through dependencies."""
     # Add a relation entry
     relation_key = "relation:invalidate_test"
     relation_entry = CacheEntry(
-        value=mock_relation,
-        relation_type="knows",
-        operation_id=str(uuid4())
+        value=mock_relation, relation_type="knows", operation_id=str(uuid4())
     )
 
     await cache_store.set(relation_key, relation_entry)
-
-    # Create an entity that should be tracked with the relation
-    entity_key = "entity:person1"
 
     # Verify relation entities are tracked
     assert relation_key in cache_store._relation_entities
@@ -680,6 +698,7 @@ async def test_entity_relation_with_invalidate_dependencies(cache_store, mock_re
     # Verify relation tracking is cleaned up
     assert relation_key not in cache_store._relation_entities
 
+
 @pytest.mark.asyncio
 async def test_ttl_behavior_with_dict(non_ttl_cache_store, sample_entity):
     """Test caching behavior with a dictionary instead of TTLCache."""
@@ -687,9 +706,7 @@ async def test_ttl_behavior_with_dict(non_ttl_cache_store, sample_entity):
 
     key = "test:dict_cache"
     entry = CacheEntry(
-        value=sample_entity,
-        entity_type="person",
-        operation_id=str(uuid4())
+        value=sample_entity, entity_type="person", operation_id=str(uuid4())
     )
 
     # Set entry in non-TTL cache
@@ -706,6 +723,7 @@ async def test_ttl_behavior_with_dict(non_ttl_cache_store, sample_entity):
     # Verify entry is removed from the regular dict
     assert key not in non_ttl_cache_store._cache
 
+
 @pytest.mark.asyncio
 async def test_compound_invalidation_paths(cache_store, sample_entity, mock_relation):
     """Test complex invalidation paths involving entities, relations, and queries."""
@@ -717,16 +735,12 @@ async def test_compound_invalidation_paths(cache_store, sample_entity, mock_rela
 
     # Add entity
     entity_entry = CacheEntry(
-        value=sample_entity,
-        entity_type="person",
-        operation_id=str(uuid4())
+        value=sample_entity, entity_type="person", operation_id=str(uuid4())
     )
 
     # Add relation
     relation_entry = CacheEntry(
-        value=mock_relation,
-        relation_type="knows",
-        operation_id=str(uuid4())
+        value=mock_relation, relation_type="knows", operation_id=str(uuid4())
     )
 
     # Add query result
@@ -734,7 +748,7 @@ async def test_compound_invalidation_paths(cache_store, sample_entity, mock_rela
         value={"results": [sample_entity]},
         entity_type="person",
         query_hash=query_hash,
-        operation_id=str(uuid4())
+        operation_id=str(uuid4()),
     )
 
     # Set entries with dependencies
@@ -751,6 +765,7 @@ async def test_compound_invalidation_paths(cache_store, sample_entity, mock_rela
     # Verify query is invalidated through dependency
     assert await cache_store.get(query_key) is None
 
+
 @pytest.mark.asyncio
 async def test_invalidate_dependencies(cache_store, sample_entity):
     """Test dependency invalidation for simple cases."""
@@ -759,15 +774,9 @@ async def test_invalidate_dependencies(cache_store, sample_entity):
     dependent_key = "dependent:simple"
 
     # Create entries
-    main_entry = CacheEntry(
-        value={"main": "data"},
-        operation_id=str(uuid4())
-    )
+    main_entry = CacheEntry(value={"main": "data"}, operation_id=str(uuid4()))
 
-    dependent_entry = CacheEntry(
-        value={"dependent": "data"},
-        operation_id=str(uuid4())
-    )
+    dependent_entry = CacheEntry(value={"dependent": "data"}, operation_id=str(uuid4()))
 
     # Set entries
     await cache_store.set(main_key, main_entry)
@@ -788,6 +797,7 @@ async def test_invalidate_dependencies(cache_store, sample_entity):
     # Reverse dependencies should be cleaned up
     assert len(cache_store._reverse_dependencies[main_key]) == 0
 
+
 @pytest.mark.asyncio
 async def test_key_pattern_deletion(cache_store, sample_entity, mock_relation):
     """Test deletion behavior for different key patterns."""
@@ -800,32 +810,24 @@ async def test_key_pattern_deletion(cache_store, sample_entity, mock_relation):
 
     # Create entries
     entity_entry = CacheEntry(
-        value=sample_entity,
-        entity_type="person",
-        operation_id=str(uuid4())
+        value=sample_entity, entity_type="person", operation_id=str(uuid4())
     )
 
     relation_entry = CacheEntry(
-        value=mock_relation,
-        relation_type="knows",
-        operation_id=str(uuid4())
+        value=mock_relation, relation_type="knows", operation_id=str(uuid4())
     )
 
     traversal_entry = CacheEntry(
-        value={"path": ["node1", "node2"]},
-        operation_id=str(uuid4())
+        value={"path": ["node1", "node2"]}, operation_id=str(uuid4())
     )
 
     query_entry = CacheEntry(
         value={"results": [sample_entity]},
         query_hash="pattern_hash",
-        operation_id=str(uuid4())
+        operation_id=str(uuid4()),
     )
 
-    normal_entry = CacheEntry(
-        value={"data": "test"},
-        operation_id=str(uuid4())
-    )
+    normal_entry = CacheEntry(value={"data": "test"}, operation_id=str(uuid4()))
 
     # Set all entries
     await cache_store.set(entity_key, entity_entry)
@@ -854,6 +856,7 @@ async def test_key_pattern_deletion(cache_store, sample_entity, mock_relation):
     await cache_store.delete(normal_key)
     assert await cache_store.get(normal_key) is None
 
+
 @pytest.mark.asyncio
 async def test_edge_case_coverage(cache_store, sample_entity, mock_relation):
     """Test to cover edge cases and missing lines in the cache_store implementation."""
@@ -862,18 +865,14 @@ async def test_edge_case_coverage(cache_store, sample_entity, mock_relation):
     entity_key = "entity:edge"
     entity_type = "person_edge"
     entity_entry = CacheEntry(
-        value=sample_entity,
-        entity_type=entity_type,
-        operation_id=str(uuid4())
+        value=sample_entity, entity_type=entity_type, operation_id=str(uuid4())
     )
 
     # Create a relation connected to this entity
     relation_key = "relation:edge"
     relation_type = "knows_edge"
     relation_entry = CacheEntry(
-        value=mock_relation,
-        relation_type=relation_type,
-        operation_id=str(uuid4())
+        value=mock_relation, relation_type=relation_type, operation_id=str(uuid4())
     )
 
     # Setup: add entity and relation to cache
@@ -895,7 +894,7 @@ async def test_edge_case_coverage(cache_store, sample_entity, mock_relation):
         value={"results": ["data"]},
         entity_type=entity_type,
         query_hash=query_hash,
-        operation_id=str(uuid4())
+        operation_id=str(uuid4()),
     )
 
     await cache_store.set(query_key, query_entry)
@@ -908,6 +907,7 @@ async def test_edge_case_coverage(cache_store, sample_entity, mock_relation):
     assert await cache_store.get(entity_key) is None
     assert await cache_store.get(query_key) is None
 
+
 @pytest.mark.asyncio
 async def test_final_coverage_improvements(cache_store, sample_entity, mock_relation):
     """Test specifically designed to improve coverage of remaining lines."""
@@ -916,9 +916,7 @@ async def test_final_coverage_improvements(cache_store, sample_entity, mock_rela
     query_key = "query:final"
     query_hash = "final_hash"
     query_entry = CacheEntry(
-        value={"results": ["data"]},
-        query_hash=query_hash,
-        operation_id=str(uuid4())
+        value={"results": ["data"]}, query_hash=query_hash, operation_id=str(uuid4())
     )
 
     # Set with dependencies to cover query dependency tracking
@@ -928,17 +926,13 @@ async def test_final_coverage_improvements(cache_store, sample_entity, mock_rela
     entity_key = "entity:final"
     entity_type = "person_final"
     entity_entry = CacheEntry(
-        value=sample_entity,
-        entity_type=entity_type,
-        operation_id=str(uuid4())
+        value=sample_entity, entity_type=entity_type, operation_id=str(uuid4())
     )
 
     relation_key = "relation:final"
     relation_type = "knows_final"
     relation_entry = CacheEntry(
-        value=mock_relation,
-        relation_type=relation_type,
-        operation_id=str(uuid4())
+        value=mock_relation, relation_type=relation_type, operation_id=str(uuid4())
     )
 
     # Setup to ensure coverage of relation deletion in invalidate_type

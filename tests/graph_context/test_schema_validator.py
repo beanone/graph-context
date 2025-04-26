@@ -25,22 +25,18 @@ def entity_types():
                 "email": PropertyDefinition(
                     type=PropertyType.STRING,
                     required=False,
-                    constraints={"pattern": r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"}
+                    constraints={"pattern": r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"},
                 ),
-                "active": PropertyDefinition(
-                    type=PropertyType.BOOLEAN,
-                    required=False,
-                    default=True
-                )
-            }
+                "active": PropertyDefinition(type=PropertyType.BOOLEAN, required=False, default=True),
+            },
         ),
         "document": EntityType(
             name="document",
             properties={
                 "title": PropertyDefinition(type=PropertyType.STRING, required=True),
-                "content": PropertyDefinition(type=PropertyType.STRING, required=False)
-            }
-        )
+                "content": PropertyDefinition(type=PropertyType.STRING, required=False),
+            },
+        ),
     }
 
 
@@ -54,19 +50,10 @@ def relation_types(entity_types):
             to_types=["document"],
             properties={
                 "year": PropertyDefinition(type=PropertyType.INTEGER, required=False),
-                "is_primary_author": PropertyDefinition(
-                    type=PropertyType.BOOLEAN,
-                    required=False,
-                    default=True
-                )
-            }
+                "is_primary_author": PropertyDefinition(type=PropertyType.BOOLEAN, required=False, default=True),
+            },
         ),
-        "likes": RelationType(
-            name="likes",
-            from_types=["person"],
-            to_types=["document", "person"],
-            properties={}
-        )
+        "likes": RelationType(name="likes", from_types=["person"], to_types=["document", "person"], properties={}),
     }
 
 
@@ -122,10 +109,7 @@ class TestSchemaValidator:
         """Test successful relation validation."""
         # Test with all properties
         props = validator.validate_relation(
-            "authored",
-            "person",
-            "document",
-            {"year": 2023, "is_primary_author": False}
+            "authored", "person", "document", {"year": 2023, "is_primary_author": False}
         )
         assert props == {"year": 2023, "is_primary_author": False}
 
@@ -154,10 +138,7 @@ class TestSchemaValidator:
     def test_validate_relation_missing_required(self, validator, relation_types):
         """Test relation validation with missing required property."""
         # Modify relation_types to have a required property
-        relation_types["authored"].properties["year"] = PropertyDefinition(
-            type=PropertyType.INTEGER,
-            required=True
-        )
+        relation_types["authored"].properties["year"] = PropertyDefinition(type=PropertyType.INTEGER, required=True)
 
         with pytest.raises(ValidationError) as exc_info:
             validator.validate_relation("authored", "person", "document", {})
@@ -166,12 +147,7 @@ class TestSchemaValidator:
     def test_validate_relation_unknown_property(self, validator):
         """Test relation validation with unknown property."""
         with pytest.raises(ValidationError) as exc_info:
-            validator.validate_relation(
-                "authored",
-                "person",
-                "document",
-                {"unknown": "value"}
-            )
+            validator.validate_relation("authored", "person", "document", {"unknown": "value"})
         assert "Unknown property: unknown" in str(exc_info.value)
 
     def test_validate_relation_default_values(self, validator):

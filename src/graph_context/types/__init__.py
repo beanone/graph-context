@@ -34,7 +34,6 @@ __all__ = [
     "QuerySpec",
     "TraversalDirection",
     "TraversalSpec",
-
     # Validators
-    "validate_property_value"
+    "validate_property_value",
 ]

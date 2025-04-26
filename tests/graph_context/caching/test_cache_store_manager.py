@@ -79,25 +79,13 @@ async def test_clear_all(store_manager):
     traversal_store = store_manager.get_traversal_store()
 
     # Create test entries
-    entity_entry = CacheEntry(
-        value={"id": "test_entity"},
-        created_at=datetime.now(UTC),
-        entity_type="test_type"
-    )
-    relation_entry = CacheEntry(
-        value={"id": "test_relation"},
-        created_at=datetime.now(UTC),
-        relation_type="test_type"
-    )
-    query_entry = CacheEntry(
-        value={"results": []},
-        created_at=datetime.now(UTC),
-        query_hash="test_hash"
-    )
+    entity_entry = CacheEntry(value={"id": "test_entity"}, created_at=datetime.now(UTC), entity_type="test_type")
+    relation_entry = CacheEntry(value={"id": "test_relation"}, created_at=datetime.now(UTC), relation_type="test_type")
+    query_entry = CacheEntry(value={"results": []}, created_at=datetime.now(UTC), query_hash="test_hash")
     traversal_entry = CacheEntry(
         value={"results": []},
         created_at=datetime.now(UTC),
-        query_hash="test_hash"  # Traversal uses query_hash field
+        query_hash="test_hash",  # Traversal uses query_hash field
     )
 
     # Add test data

@@ -6,7 +6,7 @@ to react to changes in the graph without coupling to specific implementations.
 """
 
 from collections import defaultdict
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Awaitable, Callable, Dict, Optional, Set
 from uuid import uuid4
@@ -16,12 +16,14 @@ from pydantic import BaseModel, ConfigDict, Field
 # Type alias for event handlers
 EventHandler = Callable[["EventContext"], Awaitable[None]]
 
+
 class GraphEvent(str, Enum):
     """Core graph operation events.
 
     These events represent the fundamental operations that can occur in the graph,
     without making assumptions about how they will be used.
     """
+
     # Entity operations
     ENTITY_READ = "entity:read"
     ENTITY_WRITE = "entity:write"
@@ -49,12 +51,14 @@ class GraphEvent(str, Enum):
     TRANSACTION_COMMIT = "transaction:commit"
     TRANSACTION_ROLLBACK = "transaction:rollback"
 
+
 class EventMetadata(BaseModel):
     """Metadata for graph events.
 
     Contains structured information about the operation that can be used
     by event handlers for tasks like caching and logging.
     """
+
     # Type information
     entity_type: Optional[str] = None
     relation_type: Optional[str] = None
@@ -74,6 +78,7 @@ class EventMetadata(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+
 class EventContext(BaseModel):
     """Context for a graph event.
 
@@ -83,6 +88,7 @@ class EventContext(BaseModel):
 
     This class is immutable to ensure event data cannot be modified after creation.
     """
+
     event: GraphEvent
     metadata: EventMetadata
     data: Dict[str, Any]
@@ -91,11 +97,12 @@ class EventContext(BaseModel):
 
     def __init__(self, **data: Any) -> None:
         """Initialize with default empty data dict if none provided."""
-        if 'data' not in data:
-            data['data'] = {}
-        if 'metadata' not in data:
-            data['metadata'] = EventMetadata()
+        if "data" not in data:
+            data["data"] = {}
+        if "metadata" not in data:
+            data["metadata"] = EventMetadata()
         super().__init__(**data)
+
 
 class EventSystem:
     """Simple pub/sub system for graph operations.
@@ -133,12 +140,7 @@ class EventSystem:
         except ValueError:
             pass  # Handler wasn't registered, ignore
 
-    async def emit(
-        self,
-        event: GraphEvent,
-        metadata: Optional[EventMetadata] = None,
-        **data: Any
-    ) -> None:
+    async def emit(self, event: GraphEvent, metadata: Optional[EventMetadata] = None, **data: Any) -> None:
         """Emit a graph event to all subscribers.
 
         Args:
@@ -158,7 +160,7 @@ class EventSystem:
                 GraphEvent.ENTITY_BULK_WRITE,
                 GraphEvent.ENTITY_BULK_DELETE,
                 GraphEvent.RELATION_BULK_WRITE,
-                GraphEvent.RELATION_BULK_DELETE
+                GraphEvent.RELATION_BULK_DELETE,
             }:
                 metadata_kwargs["is_bulk"] = True
                 if "entities" in data:

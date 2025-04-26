@@ -46,7 +46,7 @@ def test_property_definition():
         required=False,
         default=42,
         description="Age in years",
-        constraints={"minimum": 0, "maximum": 150}
+        constraints={"minimum": 0, "maximum": 150},
     )
     assert prop.type == PropertyType.INTEGER
     assert prop.required is False
@@ -62,9 +62,9 @@ def test_entity_type():
         description="A human being",
         properties={
             "name": PropertyDefinition(type=PropertyType.STRING, required=True),
-            "age": PropertyDefinition(type=PropertyType.INTEGER)
+            "age": PropertyDefinition(type=PropertyType.INTEGER),
         },
-        indexes=["name"]
+        indexes=["name"],
     )
 
     assert entity_type.name == "Person"
@@ -80,12 +80,10 @@ def test_relation_type():
     relation_type = RelationType(
         name="KNOWS",
         description="Person knows another person",
-        properties={
-            "since": PropertyDefinition(type=PropertyType.DATETIME)
-        },
+        properties={"since": PropertyDefinition(type=PropertyType.DATETIME)},
         from_types=["Person"],
         to_types=["Person"],
-        indexes=["since"]
+        indexes=["since"],
     )
 
     assert relation_type.name == "KNOWS"
@@ -100,16 +98,7 @@ def test_relation_type():
 def test_entity():
     """Test Entity model."""
     now = datetime.now(UTC)
-    entity = Entity(
-        id="123",
-        type="Person",
-        properties={
-            "name": "Alice",
-            "age": 30
-        },
-        created_at=now,
-        updated_at=now
-    )
+    entity = Entity(id="123", type="Person", properties={"name": "Alice", "age": 30}, created_at=now, updated_at=now)
 
     assert entity.id == "123"
     assert entity.type == "Person"
@@ -127,11 +116,9 @@ def test_relation():
         type="KNOWS",
         from_entity="123",
         to_entity="789",
-        properties={
-            "since": now
-        },
+        properties={"since": now},
         created_at=now,
-        updated_at=now
+        updated_at=now,
     )
 
     assert relation.id == "456"
@@ -162,11 +149,7 @@ def test_query_operator():
 
 def test_query_condition():
     """Test QueryCondition model."""
-    condition = QueryCondition(
-        field="age",
-        operator=QueryOperator.GREATER_THAN,
-        value=18
-    )
+    condition = QueryCondition(field="age", operator=QueryOperator.GREATER_THAN, value=18)
 
     assert condition.field == "age"
     assert condition.operator == QueryOperator.GREATER_THAN
@@ -177,15 +160,9 @@ def test_query_spec():
     """Test QuerySpec model."""
     spec = QuerySpec(
         entity_type="Person",
-        conditions=[
-            QueryCondition(
-                field="age",
-                operator=QueryOperator.GREATER_THAN,
-                value=18
-            )
-        ],
+        conditions=[QueryCondition(field="age", operator=QueryOperator.GREATER_THAN, value=18)],
         limit=10,
-        offset=0
+        offset=0,
     )
 
     assert spec.entity_type == "Person"
@@ -208,13 +185,7 @@ def test_traversal_spec():
         max_depth=3,
         relation_types=["KNOWS", "WORKS_WITH"],
         direction=TraversalDirection.OUTBOUND,
-        conditions=[
-            QueryCondition(
-                field="active",
-                operator=QueryOperator.EQUALS,
-                value=True
-            )
-        ]
+        conditions=[QueryCondition(field="active", operator=QueryOperator.EQUALS, value=True)],
     )
 
     assert spec.max_depth == 3

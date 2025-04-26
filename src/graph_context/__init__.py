@@ -36,7 +36,6 @@ __all__ = [
     # Main classes
     "GraphContext",
     "BaseGraphContext",
-
     # Exceptions
     "GraphContextError",
     "EntityNotFoundError",
@@ -45,7 +44,6 @@ __all__ = [
     "SchemaError",
     "TransactionError",
     "QueryError",
-
     # Types
     "Entity",
     "EntityType",
@@ -57,5 +55,5 @@ __all__ = [
     "QueryCondition",
     "QuerySpec",
     "TraversalDirection",
-    "TraversalSpec"
+    "TraversalSpec",
 ]

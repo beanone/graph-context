@@ -289,10 +289,7 @@ async def test_register_entity_type(base_context):
     """Test register_entity_type with a valid entity type."""
     # Setup
     base_context._events.emit = AsyncMock()
-    entity_type = EntityType(
-        name="TestType",
-        properties={"name": PropertyDefinition(type="string", required=True)}
-    )
+    entity_type = EntityType(name="TestType", properties={"name": PropertyDefinition(type="string", required=True)})
 
     # Call the method
     await base_context.register_entity_type(entity_type)
@@ -309,10 +306,7 @@ async def test_register_entity_type(base_context):
 async def test_register_entity_type_duplicate(base_context):
     """Test register_entity_type with a duplicate entity type."""
     # Setup
-    entity_type = EntityType(
-        name="TestType",
-        properties={"name": PropertyDefinition(type="string", required=True)}
-    )
+    entity_type = EntityType(name="TestType", properties={"name": PropertyDefinition(type="string", required=True)})
 
     # Register once
     await base_context.register_entity_type(entity_type)
@@ -331,18 +325,11 @@ async def test_register_relation_type(base_context):
     base_context._events.emit = AsyncMock()
 
     # Register required entity types
-    person_type = EntityType(
-        name="Person",
-        properties={"name": PropertyDefinition(type="string", required=True)}
-    )
+    person_type = EntityType(name="Person", properties={"name": PropertyDefinition(type="string", required=True)})
     base_context._entity_types["Person"] = person_type
 
     # Create relation type
-    relation_type = RelationType(
-        name="knows",
-        from_types=["Person"],
-        to_types=["Person"]
-    )
+    relation_type = RelationType(name="knows", from_types=["Person"], to_types=["Person"])
 
     # Call the method
     await base_context.register_relation_type(relation_type)
@@ -359,11 +346,7 @@ async def test_register_relation_type(base_context):
 async def test_register_relation_type_unknown_entity(base_context):
     """Test register_relation_type with unknown entity types."""
     # Create relation type with unknown entity
-    relation_type = RelationType(
-        name="knows",
-        from_types=["UnknownType"],
-        to_types=["Person"]
-    )
+    relation_type = RelationType(name="knows", from_types=["UnknownType"], to_types=["Person"])
 
     # Call the method
     with pytest.raises(SchemaError) as exc_info:

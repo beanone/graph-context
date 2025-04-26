@@ -41,6 +41,7 @@ class CacheMetrics:
 @dataclass
 class CacheConfig:
     """Configuration for the cache system."""
+
     # Default cache settings (for backward compatibility)
     max_size: int = 1000
     default_ttl: float = 300.0  # 5 minutes in seconds

@@ -37,10 +37,8 @@ class EntityNotFoundError(GraphContextError):
         if entity_type:
             details["entity_type"] = entity_type
         super().__init__(
-            f"Entity with ID '{entity_id}'" +
-            (f" and type '{entity_type}'" if entity_type else "") +
-            " not found",
-            details
+            f"Entity with ID '{entity_id}'" + (f" and type '{entity_type}'" if entity_type else "") + " not found",
+            details,
         )
 
 
@@ -54,10 +52,7 @@ class EntityTypeNotFoundError(GraphContextError):
         Args:
             entity_type: Name of the entity type that could not be found
         """
-        super().__init__(
-            f"Entity type '{entity_type}' not found",
-            {"entity_type": entity_type}
-        )
+        super().__init__(f"Entity type '{entity_type}' not found", {"entity_type": entity_type})
 
 
 class RelationNotFoundError(GraphContextError):
@@ -68,7 +63,7 @@ class RelationNotFoundError(GraphContextError):
         relation_id: str,
         relation_type: str | None = None,
         from_entity: str | None = None,
-        to_entity: str | None = None
+        to_entity: str | None = None,
     ) -> None:
         """
         Initialize the exception.
@@ -88,10 +83,10 @@ class RelationNotFoundError(GraphContextError):
             details["to_entity"] = to_entity
 
         super().__init__(
-            f"Relation with ID '{relation_id}'" +
-            (f" and type '{relation_type}'" if relation_type else "") +
-            " not found",
-            details
+            f"Relation with ID '{relation_id}'"
+            + (f" and type '{relation_type}'" if relation_type else "")
+            + " not found",
+            details,
         )
 
 
@@ -105,21 +100,14 @@ class RelationTypeNotFoundError(GraphContextError):
         Args:
             relation_type: Name of the relation type that could not be found
         """
-        super().__init__(
-            f"Relation type '{relation_type}' not found",
-            {"relation_type": relation_type}
-        )
+        super().__init__(f"Relation type '{relation_type}' not found", {"relation_type": relation_type})
 
 
 class ValidationError(GraphContextError):
     """Raised when entity or relation validation fails."""
 
     def __init__(
-        self,
-        message: str,
-        field: str | None = None,
-        value: Any | None = None,
-        constraint: str | None = None
+        self, message: str, field: str | None = None, value: Any | None = None, constraint: str | None = None
     ) -> None:
         """
         Initialize the exception.
@@ -156,10 +144,8 @@ class DuplicateEntityError(GraphContextError):
         if entity_type:
             details["entity_type"] = entity_type
         super().__init__(
-            f"Entity with ID '{entity_id}'" +
-            (f" and type '{entity_type}'" if entity_type else "") +
-            " already exists",
-            details
+            f"Entity with ID '{entity_id}'" + (f" and type '{entity_type}'" if entity_type else "") + " already exists",
+            details,
         )
 
 
@@ -178,22 +164,17 @@ class DuplicateRelationError(GraphContextError):
         if relation_type:
             details["relation_type"] = relation_type
         super().__init__(
-            f"Relation with ID '{relation_id}'" +
-            (f" and type '{relation_type}'" if relation_type else "") +
-            " already exists",
-            details
+            f"Relation with ID '{relation_id}'"
+            + (f" and type '{relation_type}'" if relation_type else "")
+            + " already exists",
+            details,
         )
 
 
 class SchemaError(GraphContextError):
     """Raised when there are schema-related issues."""
 
-    def __init__(
-        self,
-        message: str,
-        schema_type: str | None = None,
-        field: str | None = None
-    ) -> None:
+    def __init__(self, message: str, schema_type: str | None = None, field: str | None = None) -> None:
         """
         Initialize the exception.
 
@@ -214,12 +195,7 @@ class SchemaError(GraphContextError):
 class TransactionError(GraphContextError):
     """Raised when there are transaction-related issues."""
 
-    def __init__(
-        self,
-        message: str,
-        operation: str | None = None,
-        state: str | None = None
-    ) -> None:
+    def __init__(self, message: str, operation: str | None = None, state: str | None = None) -> None:
         """
         Initialize the exception.
 
@@ -240,11 +216,7 @@ class TransactionError(GraphContextError):
 class QueryError(GraphContextError):
     """Raised when there are query-related issues."""
 
-    def __init__(
-        self,
-        message: str,
-        query_spec: dict[str, Any] | None = None
-    ) -> None:
+    def __init__(self, message: str, query_spec: dict[str, Any] | None = None) -> None:
         """
         Initialize the exception.
 
@@ -258,12 +230,7 @@ class QueryError(GraphContextError):
 class BackendError(GraphContextError):
     """Raised when there are backend-specific issues."""
 
-    def __init__(
-        self,
-        message: str,
-        operation: str | None = None,
-        backend_error: Exception | None = None
-    ) -> None:
+    def __init__(self, message: str, operation: str | None = None, backend_error: Exception | None = None) -> None:
         """
         Initialize the exception.
 

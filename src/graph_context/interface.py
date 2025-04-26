@@ -9,7 +9,7 @@ from typing import Any, TypeVar
 
 from .types.type_base import Entity, QuerySpec, Relation, TraversalSpec
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class GraphContext(ABC):
@@ -31,11 +31,7 @@ class GraphContext(ABC):
         pass
 
     @abstractmethod
-    async def create_entity(
-        self,
-        entity_type: str,
-        properties: dict[str, Any]
-    ) -> Entity:
+    async def create_entity(self, entity_type: str, properties: dict[str, Any]) -> Entity:
         """
         Create a new entity in the graph.
 
@@ -54,10 +50,7 @@ class GraphContext(ABC):
         pass
 
     @abstractmethod
-    async def get_entity(
-        self,
-        entity_id: str
-    ) -> Entity | None:
+    async def get_entity(self, entity_id: str) -> Entity | None:
         """
         Retrieve an entity by ID.
 
@@ -73,11 +66,7 @@ class GraphContext(ABC):
         pass
 
     @abstractmethod
-    async def update_entity(
-        self,
-        entity_id: str,
-        properties: dict[str, Any]
-    ) -> Entity | None:
+    async def update_entity(self, entity_id: str, properties: dict[str, Any]) -> Entity | None:
         """
         Update an existing entity.
 
@@ -96,10 +85,7 @@ class GraphContext(ABC):
         pass
 
     @abstractmethod
-    async def delete_entity(
-        self,
-        entity_id: str
-    ) -> bool:
+    async def delete_entity(self, entity_id: str) -> bool:
         """
         Delete an entity from the graph.
 
@@ -116,11 +102,7 @@ class GraphContext(ABC):
 
     @abstractmethod
     async def create_relation(
-        self,
-        relation_type: str,
-        from_entity: str,
-        to_entity: str,
-        properties: dict[str, Any] | None = None
+        self, relation_type: str, from_entity: str, to_entity: str, properties: dict[str, Any] | None = None
     ) -> Relation:
         """
         Create a new relation between entities.
@@ -143,10 +125,7 @@ class GraphContext(ABC):
         pass
 
     @abstractmethod
-    async def get_relation(
-        self,
-        relation_id: str
-    ) -> Relation | None:
+    async def get_relation(self, relation_id: str) -> Relation | None:
         """
         Retrieve a relation by ID.
 
@@ -162,11 +141,7 @@ class GraphContext(ABC):
         pass
 
     @abstractmethod
-    async def update_relation(
-        self,
-        relation_id: str,
-        properties: dict[str, Any]
-    ) -> Relation | None:
+    async def update_relation(self, relation_id: str, properties: dict[str, Any]) -> Relation | None:
         """
         Update an existing relation.
 
@@ -185,10 +160,7 @@ class GraphContext(ABC):
         pass
 
     @abstractmethod
-    async def query(
-        self,
-        query_spec: QuerySpec
-    ) -> list[Entity]:
+    async def query(self, query_spec: QuerySpec) -> list[Entity]:
         """
         Execute a query against the graph.
 
@@ -205,11 +177,7 @@ class GraphContext(ABC):
         pass
 
     @abstractmethod
-    async def traverse(
-        self,
-        start_entity: str,
-        traversal_spec: TraversalSpec
-    ) -> list[Entity]:
+    async def traverse(self, start_entity: str, traversal_spec: TraversalSpec) -> list[Entity]:
         """
         Traverse the graph starting from a given entity.
 

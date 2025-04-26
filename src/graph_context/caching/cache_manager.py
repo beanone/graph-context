@@ -24,6 +24,7 @@ from .config import CacheConfig, CacheMetrics
 # Setup module logger
 logger = logging.getLogger(__name__)
 
+
 class CacheManager:
     """Manages cache operations and event handling for the graph context."""
 
@@ -89,34 +90,45 @@ class CacheManager:
         """Get current cache metrics."""
         return self.metrics.to_dict() if self.metrics else None
 
+    def is_read_only(self, event: GraphEvent) -> bool:
+        """Return True if the event is a read-only cache event."""
+        return event in [
+            GraphEvent.ENTITY_READ,
+            GraphEvent.RELATION_READ,
+            GraphEvent.QUERY_EXECUTED,
+            GraphEvent.TRAVERSAL_EXECUTED,
+        ]
+
     async def handle_event(self, context: EventContext) -> None:
         """Handle a graph event."""
         start_time = time.time()
         try:
             if not self.is_enabled():
                 # When cache is disabled, treat all reads as misses
-                if context.event in [GraphEvent.ENTITY_READ, GraphEvent.RELATION_READ,
-                                   GraphEvent.QUERY_EXECUTED, GraphEvent.TRAVERSAL_EXECUTED]:
+                if self.is_read_only(context.event):
                     self._track_cache_access(False, time.time() - start_time)
                 return
 
-            match context.event:
-                case GraphEvent.ENTITY_READ:
-                    await self._handle_entity_read(context)
-                case GraphEvent.ENTITY_WRITE | GraphEvent.ENTITY_BULK_WRITE | \
-                     GraphEvent.ENTITY_DELETE | GraphEvent.ENTITY_BULK_DELETE:
-                    await self._handle_entity_write(context)
-                case GraphEvent.RELATION_READ:
-                    await self._handle_relation_read(context)
-                case GraphEvent.RELATION_WRITE | GraphEvent.RELATION_BULK_WRITE | \
-                     GraphEvent.RELATION_DELETE | GraphEvent.RELATION_BULK_DELETE:
-                    await self._handle_relation_write(context)
-                case GraphEvent.QUERY_EXECUTED:
-                    await self._handle_query_executed(context)
-                case GraphEvent.TRAVERSAL_EXECUTED:
-                    await self._handle_traversal_executed(context)
-                case GraphEvent.SCHEMA_MODIFIED | GraphEvent.TYPE_MODIFIED:
-                    await self._handle_schema_modified(context)
+            # Map of event types to handler coroutines
+            event_handlers = {
+                GraphEvent.ENTITY_READ: self._handle_entity_read,
+                GraphEvent.RELATION_READ: self._handle_relation_read,
+                GraphEvent.QUERY_EXECUTED: self._handle_query_executed,
+                GraphEvent.TRAVERSAL_EXECUTED: self._handle_traversal_executed,
+                GraphEvent.ENTITY_WRITE: self._handle_entity_write,
+                GraphEvent.ENTITY_BULK_WRITE: self._handle_entity_write,
+                GraphEvent.ENTITY_DELETE: self._handle_entity_write,
+                GraphEvent.ENTITY_BULK_DELETE: self._handle_entity_write,
+                GraphEvent.RELATION_WRITE: self._handle_relation_write,
+                GraphEvent.RELATION_BULK_WRITE: self._handle_relation_write,
+                GraphEvent.RELATION_DELETE: self._handle_relation_write,
+                GraphEvent.RELATION_BULK_DELETE: self._handle_relation_write,
+                GraphEvent.SCHEMA_MODIFIED: self._handle_schema_modified,
+                GraphEvent.TYPE_MODIFIED: self._handle_schema_modified,
+            }
+            handler = event_handlers.get(context.event)
+            if handler:
+                await handler(context)
         finally:
             if self.metrics:
                 duration = time.time() - start_time
@@ -144,11 +156,7 @@ class CacheManager:
         # Cache the result if we have one
         if result:
             logger.debug("Storing in cache: %s", entity_id)
-            entry = CacheEntry(
-                value=result,
-                created_at=datetime.now(UTC),
-                entity_type=context.metadata.entity_type
-            )
+            entry = CacheEntry(value=result, created_at=datetime.now(UTC), entity_type=context.metadata.entity_type)
             await store.set(entity_id, entry)
 
         return result
@@ -184,11 +192,7 @@ class CacheManager:
         # Cache the result if we have one
         if result:
             logger.debug("Storing in cache: %s", relation_id)
-            entry = CacheEntry(
-                value=result,
-                created_at=datetime.now(UTC),
-                relation_type=context.metadata.relation_type
-            )
+            entry = CacheEntry(value=result, created_at=datetime.now(UTC), relation_type=context.metadata.relation_type)
             await store.set(relation_id, entry)
 
         return result
@@ -224,11 +228,7 @@ class CacheManager:
         # Cache the result if we have one
         if result:
             logger.debug("Storing in cache: %s", query_hash)
-            entry = CacheEntry(
-                value=result,
-                created_at=datetime.now(UTC),
-                query_hash=query_hash
-            )
+            entry = CacheEntry(value=result, created_at=datetime.now(UTC), query_hash=query_hash)
             await store.set(query_hash, entry)
 
         return result
@@ -258,7 +258,7 @@ class CacheManager:
             entry = CacheEntry(
                 value=result,
                 created_at=datetime.now(UTC),
-                query_hash=traversal_hash  # Reuse query_hash field for traversal hash
+                query_hash=traversal_hash,  # Reuse query_hash field for traversal hash
             )
             await store.set(traversal_hash, entry)
 
@@ -278,23 +278,19 @@ class CacheManager:
 
         # Create fresh cache stores
         self.store_manager.entity_store = CacheStore(
-            maxsize=self.config.entity_cache_size,
-            ttl=self.config.entity_cache_ttl
+            maxsize=self.config.entity_cache_size, ttl=self.config.entity_cache_ttl
         )
 
         self.store_manager.relation_store = CacheStore(
-            maxsize=self.config.relation_cache_size,
-            ttl=self.config.relation_cache_ttl
+            maxsize=self.config.relation_cache_size, ttl=self.config.relation_cache_ttl
         )
 
         self.store_manager.query_store = CacheStore(
-            maxsize=self.config.query_cache_size,
-            ttl=self.config.query_cache_ttl
+            maxsize=self.config.query_cache_size, ttl=self.config.query_cache_ttl
         )
 
         self.store_manager.traversal_store = CacheStore(
-            maxsize=self.config.traversal_cache_size,
-            ttl=self.config.traversal_cache_ttl
+            maxsize=self.config.traversal_cache_size, ttl=self.config.traversal_cache_ttl
         )
 
     def disable(self) -> None:

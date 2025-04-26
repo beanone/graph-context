@@ -58,36 +58,19 @@ class InMemoryGraphStore(GraphStore, GraphLike):
         """Get current UTC time with timezone information."""
         return datetime.now(UTC)
 
-    async def create_entity(
-        self,
-        entity_type: str,
-        properties: Dict[str, Any]
-    ) -> str:
+    async def create_entity(self, entity_type: str, properties: Dict[str, Any]) -> str:
         """Create a new entity in the store."""
         entity_id = self._generate_id()
         now = self._get_current_time()
-        entity = Entity(
-            id=entity_id,
-            type=entity_type,
-            properties=properties,
-            created_at=now,
-            updated_at=now
-        )
+        entity = Entity(id=entity_id, type=entity_type, properties=properties, created_at=now, updated_at=now)
         self._get_entities()[entity_id] = entity
         return entity_id
 
-    async def get_entity(
-        self,
-        entity_id: str
-    ) -> Optional[Entity]:
+    async def get_entity(self, entity_id: str) -> Optional[Entity]:
         """Retrieve an entity by ID."""
         return self._get_entities().get(entity_id)
 
-    async def update_entity(
-        self,
-        entity_id: str,
-        properties: Dict[str, Any]
-    ) -> bool:
+    async def update_entity(self, entity_id: str, properties: Dict[str, Any]) -> bool:
         """Update an existing entity."""
         entities = self._get_entities()
         if entity_id not in entities:
@@ -104,14 +87,11 @@ class InMemoryGraphStore(GraphStore, GraphLike):
             type=entity.type,
             properties=new_properties,
             created_at=entity.created_at,
-            updated_at=self._get_current_time()
+            updated_at=self._get_current_time(),
         )
         return True
 
-    async def delete_entity(
-        self,
-        entity_id: str
-    ) -> bool:
+    async def delete_entity(self, entity_id: str) -> bool:
         """Delete an entity from the store."""
         entities = self._get_entities()
         if entity_id not in entities:
@@ -127,11 +107,7 @@ class InMemoryGraphStore(GraphStore, GraphLike):
         return True
 
     async def create_relation(
-        self,
-        relation_type: str,
-        from_entity: str,
-        to_entity: str,
-        properties: Optional[Dict[str, Any]] = None
+        self, relation_type: str, from_entity: str, to_entity: str, properties: Optional[Dict[str, Any]] = None
     ) -> str:
         """Create a new relation between entities."""
         # Verify both entities exist
@@ -148,23 +124,16 @@ class InMemoryGraphStore(GraphStore, GraphLike):
             to_entity=to_entity,
             properties=properties or {},
             created_at=now,
-            updated_at=now
+            updated_at=now,
         )
         self._get_relations()[relation_id] = relation
         return relation_id
 
-    async def get_relation(
-        self,
-        relation_id: str
-    ) -> Optional[Relation]:
+    async def get_relation(self, relation_id: str) -> Optional[Relation]:
         """Retrieve a relation by ID."""
         return self._get_relations().get(relation_id)
 
-    async def update_relation(
-        self,
-        relation_id: str,
-        properties: Dict[str, Any]
-    ) -> bool:
+    async def update_relation(self, relation_id: str, properties: Dict[str, Any]) -> bool:
         """Update an existing relation."""
         relations = self._get_relations()
         if relation_id not in relations:
@@ -183,14 +152,11 @@ class InMemoryGraphStore(GraphStore, GraphLike):
             to_entity=relation.to_entity,
             properties=new_properties,
             created_at=relation.created_at,
-            updated_at=self._get_current_time()
+            updated_at=self._get_current_time(),
         )
         return True
 
-    async def delete_relation(
-        self,
-        relation_id: str
-    ) -> bool:
+    async def delete_relation(self, relation_id: str) -> bool:
         """Delete a relation from the store."""
         relations = self._get_relations()
         if relation_id not in relations:
@@ -199,20 +165,14 @@ class InMemoryGraphStore(GraphStore, GraphLike):
         del relations[relation_id]
         return True
 
-    async def query(
-        self,
-        query_spec: Dict[str, Any]
-    ) -> List[Entity]:
+    async def query(self, query_spec: Dict[str, Any]) -> List[Entity]:
         """Execute a query against the store."""
         entities = self._get_entities()
         results = []
 
         # Filter by entity type if specified
         if "entity_type" in query_spec:
-            entities = {
-                k: v for k, v in entities.items()
-                if v.type == query_spec["entity_type"]
-            }
+            entities = {k: v for k, v in entities.items() if v.type == query_spec["entity_type"]}
 
         # Apply property conditions if specified
         if "conditions" in query_spec:
@@ -222,29 +182,24 @@ class InMemoryGraphStore(GraphStore, GraphLike):
                 value = condition["value"]
 
                 entities = {
-                    k: v for k, v in entities.items()
-                    if property_name in v.properties and self._evaluate_condition(
-                        v.properties[property_name], operator, value
-                    )
+                    k: v
+                    for k, v in entities.items()
+                    if property_name in v.properties
+                    and self._evaluate_condition(v.properties[property_name], operator, value)
                 }
 
         # Convert to list and apply offset/limit
         results = list(entities.values())
 
         if "offset" in query_spec and query_spec["offset"]:
-            results = results[query_spec["offset"]:]
+            results = results[query_spec["offset"] :]
 
         if "limit" in query_spec and query_spec["limit"]:
-            results = results[:query_spec["limit"]]
+            results = results[: query_spec["limit"]]
 
         return results
 
-    def _evaluate_condition(
-        self,
-        property_value: Any,
-        operator: str,
-        value: Any
-    ) -> bool:
+    def _evaluate_condition(self, property_value: Any, operator: str, value: Any) -> bool:
         """Evaluate a query condition."""
         if operator == "eq":
             return property_value == value
@@ -266,11 +221,7 @@ class InMemoryGraphStore(GraphStore, GraphLike):
             return str(property_value).endswith(str(value))
         return False
 
-    async def traverse(
-        self,
-        start_entity: str,
-        traversal_spec: Dict[str, Any]
-    ) -> List[Entity | TraversalPath]:
+    async def traverse(self, start_entity: str, traversal_spec: Dict[str, Any]) -> List[Entity | TraversalPath]:
         """
         Traverse the graph starting from a given entity.
 
@@ -300,12 +251,7 @@ class InMemoryGraphStore(GraphStore, GraphLike):
         strategy = traversal_spec.pop("strategy", "bfs")
         # Call the traversal function from the traversal module
         # Note: The traverse function handles the return_paths logic internally
-        return await traverse(
-            graph=self,
-            start_entity=start_entity,
-            traversal_spec=traversal_spec,
-            strategy=strategy
-        )
+        return await traverse(graph=self, start_entity=start_entity, traversal_spec=traversal_spec, strategy=strategy)
 
     async def begin_transaction(self) -> None:
         """Begin a new transaction."""

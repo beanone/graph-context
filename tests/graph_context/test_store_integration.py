@@ -48,7 +48,7 @@ class MockGraphStore(GraphStore):
             type=entity_type,
             properties=properties,
             created_at=self._get_current_time(),
-            updated_at=self._get_current_time()
+            updated_at=self._get_current_time(),
         )
         return entity_id
 
@@ -68,7 +68,7 @@ class MockGraphStore(GraphStore):
                 type=entity.type,
                 properties=updated_props,
                 created_at=entity.created_at,
-                updated_at=self._get_current_time()
+                updated_at=self._get_current_time(),
             )
             return True
         return False
@@ -89,11 +89,7 @@ class MockGraphStore(GraphStore):
         return False
 
     async def create_relation(
-        self,
-        relation_type: str,
-        from_entity: str,
-        to_entity: str,
-        properties: Optional[Dict[str, Any]] = None
+        self, relation_type: str, from_entity: str, to_entity: str, properties: Optional[Dict[str, Any]] = None
     ) -> str:
         """Mock create_relation method."""
         self.method_calls.append(("create_relation", relation_type, from_entity, to_entity, properties))
@@ -105,7 +101,7 @@ class MockGraphStore(GraphStore):
             to_entity=to_entity,
             properties=properties or {},
             created_at=self._get_current_time(),
-            updated_at=self._get_current_time()
+            updated_at=self._get_current_time(),
         )
         return relation_id
 
@@ -127,7 +123,7 @@ class MockGraphStore(GraphStore):
                 to_entity=relation.to_entity,
                 properties=updated_props,
                 created_at=relation.created_at,
-                updated_at=self._get_current_time()
+                updated_at=self._get_current_time(),
             )
             return True
         return False
@@ -180,7 +176,7 @@ class TestBaseGraphContextStoreIntegration:
         # Patch the GraphStoreFactory._load_config method to return our mock config
         self.load_config_patcher = mock.patch(
             "graph_context.store.GraphStoreFactory._load_config",
-            return_value=mock.MagicMock(type="mock", config={"test": "config"})
+            return_value=mock.MagicMock(type="mock", config={"test": "config"}),
         )
         self.load_config_patcher.start()
 
@@ -214,10 +210,9 @@ class TestBaseGraphContextStoreIntegration:
         assert isinstance(store, MockGraphStore)
 
         # Register entity type for testing
-        await context.register_entity_type(EntityType(
-            name="Person",
-            properties={"name": PropertyDefinition(type="string", required=True)}
-        ))
+        await context.register_entity_type(
+            EntityType(name="Person", properties={"name": PropertyDefinition(type="string", required=True)})
+        )
 
         # Begin transaction (required for operations)
         await context.begin_transaction()
@@ -250,20 +245,20 @@ class TestBaseGraphContextStoreIntegration:
         store = context._store
 
         # Register types for testing
-        await context.register_entity_type(EntityType(
-            name="Person",
-            properties={"name": PropertyDefinition(type="string", required=True)}
-        ))
-        await context.register_entity_type(EntityType(
-            name="Document",
-            properties={"title": PropertyDefinition(type="string", required=True)}
-        ))
-        await context.register_relation_type(RelationType(
-            name="Authored",
-            from_types=["Person"],
-            to_types=["Document"],
-            properties={"year": PropertyDefinition(type="integer", required=False)}
-        ))
+        await context.register_entity_type(
+            EntityType(name="Person", properties={"name": PropertyDefinition(type="string", required=True)})
+        )
+        await context.register_entity_type(
+            EntityType(name="Document", properties={"title": PropertyDefinition(type="string", required=True)})
+        )
+        await context.register_relation_type(
+            RelationType(
+                name="Authored",
+                from_types=["Person"],
+                to_types=["Document"],
+                properties={"year": PropertyDefinition(type="integer", required=False)},
+            )
+        )
 
         # Begin transaction
         await context.begin_transaction()
@@ -278,10 +273,7 @@ class TestBaseGraphContextStoreIntegration:
         # Create relation and verify delegation
         relation_id = await context.create_relation("Authored", person_id, doc_id)
         assert any(
-            call[0] == "create_relation" and
-            call[1] == "Authored" and
-            call[2] == person_id and
-            call[3] == doc_id
+            call[0] == "create_relation" and call[1] == "Authored" and call[2] == person_id and call[3] == doc_id
             for call in store.method_calls
         )
 
@@ -308,10 +300,9 @@ class TestBaseGraphContextStoreIntegration:
         store = context._store
 
         # Register entity type for testing
-        await context.register_entity_type(EntityType(
-            name="Person",
-            properties={"name": PropertyDefinition(type="string", required=True)}
-        ))
+        await context.register_entity_type(
+            EntityType(name="Person", properties={"name": PropertyDefinition(type="string", required=True)})
+        )
 
         # Begin transaction
         await context.begin_transaction()
@@ -330,11 +321,7 @@ class TestBaseGraphContextStoreIntegration:
         # Traverse and verify delegation
         traversal_spec = {"max_depth": 2, "direction": "outbound"}
         await context.traverse(entity_id, traversal_spec)
-        assert any(
-            call[0] == "traverse" and
-            call[1] == entity_id
-            for call in store.method_calls
-        )
+        assert any(call[0] == "traverse" and call[1] == entity_id for call in store.method_calls)
 
         # Commit transaction
         await context.commit_transaction()

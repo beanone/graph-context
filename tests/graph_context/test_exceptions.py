@@ -37,12 +37,7 @@ def test_validation_error():
     assert isinstance(exc, GraphContextError)
 
     # Test with all optional parameters
-    exc = ValidationError(
-        msg,
-        field="name",
-        value="test",
-        constraint="min_length"
-    )
+    exc = ValidationError(msg, field="name", value="test", constraint="min_length")
     assert exc.details["field"] == "name"
     assert exc.details["value"] == "test"
     assert exc.details["constraint"] == "min_length"
@@ -105,12 +100,7 @@ def test_relation_not_found_error():
     assert exc.details["relation_type"] == relation_type
 
     # Test with all optional parameters
-    exc = RelationNotFoundError(
-        relation_id,
-        relation_type="KNOWS",
-        from_entity="123",
-        to_entity="456"
-    )
+    exc = RelationNotFoundError(relation_id, relation_type="KNOWS", from_entity="123", to_entity="456")
     assert exc.details["relation_id"] == relation_id
     assert exc.details["relation_type"] == "KNOWS"
     assert exc.details["from_entity"] == "123"

@@ -84,10 +84,7 @@ def sample_relation():
     relation.type = "authored"
     relation.from_entity = "entity-123"
     relation.to_entity = "entity-456"
-    relation.properties = {
-        "year": 2023,
-        "is_primary_author": True
-    }
+    relation.properties = {"year": 2023, "is_primary_author": True}
     return relation
 
 
@@ -99,10 +96,7 @@ def updated_relation():
     relation.type = "authored"
     relation.from_entity = "entity-123"
     relation.to_entity = "entity-456"
-    relation.properties = {
-        "year": 2024,
-        "is_primary_author": False
-    }
+    relation.properties = {"year": 2024, "is_primary_author": False}
     return relation
 
 
@@ -140,9 +134,16 @@ class TestRelationManager:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_create_relation_success(self, relation_manager, mock_store, mock_validator,
-                                          mock_transaction, mock_events, sample_from_entity,
-                                          sample_to_entity):
+    async def test_create_relation_success(
+        self,
+        relation_manager,
+        mock_store,
+        mock_validator,
+        mock_transaction,
+        mock_events,
+        sample_from_entity,
+        sample_to_entity,
+    ):
         """Test create method successful execution."""
         relation_type = "authored"
         from_entity = "entity-123"
@@ -161,29 +162,22 @@ class TestRelationManager:
         mock_store.get_entity.assert_any_call(from_entity)
         mock_store.get_entity.assert_any_call(to_entity)
         mock_validator.validate_relation.assert_called_once_with(
-            relation_type,
-            sample_from_entity.type,
-            sample_to_entity.type,
-            properties
+            relation_type, sample_from_entity.type, sample_to_entity.type, properties
         )
-        mock_store.create_relation.assert_called_once_with(
-            relation_type,
-            from_entity,
-            to_entity,
-            validated_props
-        )
+        mock_store.create_relation.assert_called_once_with(relation_type, from_entity, to_entity, validated_props)
         mock_events.emit.assert_called_once_with(
             GraphEvent.RELATION_WRITE,
             relation_id=relation_id,
             relation_type=relation_type,
             from_entity=from_entity,
-            to_entity=to_entity
+            to_entity=to_entity,
         )
         assert result == relation_id
 
     @pytest.mark.asyncio
-    async def test_create_relation_from_entity_not_found(self, relation_manager, mock_store,
-                                                       mock_transaction, mock_validator, mock_events):
+    async def test_create_relation_from_entity_not_found(
+        self, relation_manager, mock_store, mock_transaction, mock_validator, mock_events
+    ):
         """Test create method when from_entity doesn't exist."""
         relation_type = "authored"
         from_entity = "nonexistent"
@@ -202,9 +196,9 @@ class TestRelationManager:
         mock_events.emit.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_create_relation_to_entity_not_found(self, relation_manager, mock_store,
-                                                     mock_transaction, sample_from_entity,
-                                                     mock_validator, mock_events):
+    async def test_create_relation_to_entity_not_found(
+        self, relation_manager, mock_store, mock_transaction, sample_from_entity, mock_validator, mock_events
+    ):
         """Test create method when to_entity doesn't exist."""
         relation_type = "authored"
         from_entity = "entity-123"
@@ -223,9 +217,17 @@ class TestRelationManager:
         mock_events.emit.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_update_relation_success(self, relation_manager, mock_store, mock_validator,
-                                          mock_transaction, mock_events, sample_relation,
-                                          sample_from_entity, sample_to_entity):
+    async def test_update_relation_success(
+        self,
+        relation_manager,
+        mock_store,
+        mock_validator,
+        mock_transaction,
+        mock_events,
+        sample_relation,
+        sample_from_entity,
+        sample_to_entity,
+    ):
         """Test update method successful execution."""
         relation_id = "relation-123"
         properties = {"year": 2024, "is_primary_author": False}
@@ -243,23 +245,27 @@ class TestRelationManager:
         mock_store.get_entity.assert_any_call(sample_relation.from_entity)
         mock_store.get_entity.assert_any_call(sample_relation.to_entity)
         mock_validator.validate_relation.assert_called_once_with(
-            sample_relation.type,
-            sample_from_entity.type,
-            sample_to_entity.type,
-            properties
+            sample_relation.type, sample_from_entity.type, sample_to_entity.type, properties
         )
         mock_store.update_relation.assert_called_once_with(relation_id, validated_props)
         mock_events.emit.assert_called_once_with(
-            GraphEvent.RELATION_WRITE,
-            relation_id=relation_id,
-            relation_type=sample_relation.type
+            GraphEvent.RELATION_WRITE, relation_id=relation_id, relation_type=sample_relation.type
         )
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_update_relation_verifies_changes(self, relation_manager, mock_store, mock_validator,
-                                                  mock_transaction, mock_events, sample_relation,
-                                                  updated_relation, sample_from_entity, sample_to_entity):
+    async def test_update_relation_verifies_changes(
+        self,
+        relation_manager,
+        mock_store,
+        mock_validator,
+        mock_transaction,
+        mock_events,
+        sample_relation,
+        updated_relation,
+        sample_from_entity,
+        sample_to_entity,
+    ):
         """Test update method actually changes the relation properties."""
         relation_id = "relation-123"
         properties = {"year": 2024, "is_primary_author": False}
@@ -282,9 +288,17 @@ class TestRelationManager:
         assert mock_store.get_relation.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_update_relation_failed_operation(self, relation_manager, mock_store, mock_validator,
-                                                 mock_transaction, mock_events, sample_relation,
-                                                 sample_from_entity, sample_to_entity):
+    async def test_update_relation_failed_operation(
+        self,
+        relation_manager,
+        mock_store,
+        mock_validator,
+        mock_transaction,
+        mock_events,
+        sample_relation,
+        sample_from_entity,
+        sample_to_entity,
+    ):
         """Test update method when update operation fails."""
         relation_id = "relation-123"
         properties = {"year": 2024, "is_primary_author": False}
@@ -301,10 +315,7 @@ class TestRelationManager:
         mock_transaction.check_transaction.assert_called_once()
         mock_store.get_relation.assert_called_once_with(relation_id)
         mock_validator.validate_relation.assert_called_once_with(
-            sample_relation.type,
-            sample_from_entity.type,
-            sample_to_entity.type,
-            properties
+            sample_relation.type, sample_from_entity.type, sample_to_entity.type, properties
         )
         mock_store.update_relation.assert_called_once_with(relation_id, validated_props)
         # Event should not be emitted on failed update
@@ -312,8 +323,9 @@ class TestRelationManager:
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_update_relation_not_found(self, relation_manager, mock_store, mock_transaction,
-                                            mock_validator, mock_events):
+    async def test_update_relation_not_found(
+        self, relation_manager, mock_store, mock_transaction, mock_validator, mock_events
+    ):
         """Test update method when relation doesn't exist."""
         relation_id = "nonexistent"
         properties = {"year": 2024}
@@ -330,8 +342,9 @@ class TestRelationManager:
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_delete_relation_success(self, relation_manager, mock_store, mock_transaction,
-                                          mock_events, sample_relation):
+    async def test_delete_relation_success(
+        self, relation_manager, mock_store, mock_transaction, mock_events, sample_relation
+    ):
         """Test delete method successful execution."""
         relation_id = "relation-123"
         mock_store.get_relation.return_value = sample_relation
@@ -343,15 +356,14 @@ class TestRelationManager:
         mock_store.get_relation.assert_called_once_with(relation_id)
         mock_store.delete_relation.assert_called_once_with(relation_id)
         mock_events.emit.assert_called_once_with(
-            GraphEvent.RELATION_DELETE,
-            relation_id=relation_id,
-            relation_type=sample_relation.type
+            GraphEvent.RELATION_DELETE, relation_id=relation_id, relation_type=sample_relation.type
         )
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_delete_relation_verify_deleted(self, relation_manager, mock_store, mock_transaction,
-                                                mock_events, sample_relation):
+    async def test_delete_relation_verify_deleted(
+        self, relation_manager, mock_store, mock_transaction, mock_events, sample_relation
+    ):
         """Test delete method actually removes the relation."""
         relation_id = "relation-123"
 
@@ -369,8 +381,9 @@ class TestRelationManager:
         assert mock_store.get_relation.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_delete_relation_failed_operation(self, relation_manager, mock_store, mock_transaction,
-                                                  mock_events, sample_relation):
+    async def test_delete_relation_failed_operation(
+        self, relation_manager, mock_store, mock_transaction, mock_events, sample_relation
+    ):
         """Test delete method when delete operation fails."""
         relation_id = "relation-123"
         mock_store.get_relation.return_value = sample_relation

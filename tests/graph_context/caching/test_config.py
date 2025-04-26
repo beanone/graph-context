@@ -76,13 +76,16 @@ class TestCacheConfig:
         assert config.traversal_cache_size == 500
         assert config.traversal_cache_ttl == 60.0
 
-    @pytest.mark.parametrize("type_name,expected_ttl", [
-        ("entity", 300.0),
-        ("relation", 300.0),
-        ("query", 60.0),
-        ("traversal", 60.0),
-        ("unknown", 300.0),  # Should return default_ttl
-    ])
+    @pytest.mark.parametrize(
+        "type_name,expected_ttl",
+        [
+            ("entity", 300.0),
+            ("relation", 300.0),
+            ("query", 60.0),
+            ("traversal", 60.0),
+            ("unknown", 300.0),  # Should return default_ttl
+        ],
+    )
     def test_get_ttl_for_type(self, type_name, expected_ttl):
         """Test getting TTL for different types."""
         config = CacheConfig()
