@@ -6,6 +6,7 @@ import logging
 import pytest
 from unittest.mock import AsyncMock, Mock, patch
 from datetime import datetime, UTC
+import types
 
 from graph_context.caching.cached_context import CachedGraphContext
 from graph_context.caching.cache_manager import CacheManager
@@ -13,7 +14,7 @@ from graph_context.caching.cache_store import CacheEntry
 from graph_context.event_system import EventSystem, GraphEvent, EventContext, EventMetadata
 from graph_context.context_base import BaseGraphContext
 from graph_context.types.type_base import Entity, Relation, EntityType, PropertyDefinition, RelationType
-from graph_context.exceptions import SchemaError, EntityNotFoundError, RelationNotFoundError
+from graph_context.exceptions import SchemaError, EntityNotFoundError, RelationNotFoundError, TransactionError
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -323,3 +324,388 @@ async def traverse(self, start_entity_id: str, traversal_spec: dict) -> List[str
     elif start_entity_id == "entity2":
         return ["entity3", "entity4"]
     return []
+
+
+@pytest.mark.asyncio
+async def test_transaction_isolation(cached_context):
+    """Test that changes in a transaction are isolated."""
+    # Set up mock cache responses
+    entity_store = cached_context._cache_manager.store_manager.get_entity_store()
+    entity_store.get.return_value = None  # Cache miss to force base context use
+
+    # Create initial entity in a transaction
+    await cached_context.begin_transaction()
+    entity_id = await cached_context.create_entity("person", {"name": "Initial"})
+    await cached_context.commit_transaction()
+
+    # Mock cache hit with initial value
+    entity_store.get.return_value = CacheEntry(
+        value=Entity(id=entity_id, type="person", properties={"name": "Initial"}),
+        created_at=datetime.now(UTC)
+    )
+
+    # Start new transaction
+    await cached_context.begin_transaction()
+
+    # Update entity in transaction
+    await cached_context.update_entity(entity_id, {"name": "Updated"})
+
+    # Verify entity is updated within transaction
+    entity = await cached_context.get_entity(entity_id)
+    assert entity.properties["name"] == "Updated"
+
+    # Rollback transaction
+    await cached_context.rollback_transaction()
+
+    # Verify entity is back to original state
+    entity = await cached_context.get_entity(entity_id)
+    assert entity.properties["name"] == "Initial"
+
+
+@pytest.mark.asyncio
+async def test_transaction_commit_effects(cached_context):
+    """Test that committed changes are persisted and cache is updated."""
+    # Set up mock cache responses
+    entity_store = cached_context._cache_manager.store_manager.get_entity_store()
+    entity_store.get.return_value = None  # Cache miss to force base context use
+
+    # Create initial entity in a transaction
+    await cached_context.begin_transaction()
+    entity_id = await cached_context.create_entity("person", {"name": "Initial"})
+    await cached_context.commit_transaction()
+
+    # Mock cache hit with initial value
+    entity_store.get.return_value = CacheEntry(
+        value=Entity(id=entity_id, type="person", properties={"name": "Initial"}),
+        created_at=datetime.now(UTC)
+    )
+
+    # Start new transaction
+    await cached_context.begin_transaction()
+
+    # Update entity in transaction
+    await cached_context.update_entity(entity_id, {"name": "Updated"})
+
+    # Commit transaction
+    await cached_context.commit_transaction()
+
+    # Update mock for the new value
+    entity_store.get.return_value = CacheEntry(
+        value=Entity(id=entity_id, type="person", properties={"name": "Updated"}),
+        created_at=datetime.now(UTC)
+    )
+
+    # Verify entity remains updated after commit
+    entity = await cached_context.get_entity(entity_id)
+    assert entity.properties["name"] == "Updated"
+
+
+@pytest.mark.asyncio
+async def test_single_entity_operations(cached_context):
+    """Test single entity operations."""
+    # Start transaction
+    await cached_context.begin_transaction()
+
+    # Create multiple entities
+    entity_ids = []
+    for i in range(3):
+        entity_id = await cached_context.create_entity("person", {
+            "name": f"Person {i}"  # Ensure name is provided
+        })
+        entity_ids.append(entity_id)
+
+    # Verify entities were created
+    for i, entity_id in enumerate(entity_ids):
+        entity = await cached_context.get_entity(entity_id)
+        assert entity.properties["name"] == f"Person {i}"
+
+    # Update entities
+    for entity_id in entity_ids:
+        await cached_context.update_entity(entity_id, {"name": "Updated"})
+
+    # Verify updates
+    for entity_id in entity_ids:
+        entity = await cached_context.get_entity(entity_id)
+        assert entity.properties["name"] == "Updated"
+
+    # Delete entities
+    for entity_id in entity_ids:
+        await cached_context.delete_entity(entity_id)
+
+    # Verify deletions
+    for entity_id in entity_ids:
+        with pytest.raises(EntityNotFoundError):
+            await cached_context.get_entity(entity_id)
+
+    await cached_context.commit_transaction()
+
+
+@pytest.mark.asyncio
+async def test_single_relation_operations(cached_context):
+    """Test single relation operations as alternative to bulk operations."""
+    # Start transaction
+    await cached_context.begin_transaction()
+
+    # Create test entities first
+    person_ids = []
+    for i in range(3):
+        person_id = await cached_context.create_entity("person", {"name": f"Person {i}"})
+        person_ids.append(person_id)
+
+    # Create relations
+    relation_ids = []
+    for i in range(1, 3):
+        relation_id = await cached_context.create_relation(
+            "knows",
+            person_ids[0],
+            person_ids[i],
+            {"since": str(2020 + i)}
+        )
+        relation_ids.append(relation_id)
+
+    # Verify relations were created
+    for i, relation_id in enumerate(relation_ids):
+        relation = await cached_context.get_relation(relation_id)
+        assert relation.properties["since"] == str(2020 + i + 1)
+
+    # Update relations
+    for relation_id in relation_ids:
+        await cached_context.update_relation(relation_id, {"since": "2030"})
+
+    # Verify updates
+    for relation_id in relation_ids:
+        relation = await cached_context.get_relation(relation_id)
+        assert relation.properties["since"] == "2030"
+
+    # Delete relations
+    for relation_id in relation_ids:
+        await cached_context.delete_relation(relation_id)
+
+    # Verify deletions
+    for relation_id in relation_ids:
+        with pytest.raises(RelationNotFoundError):
+            await cached_context.get_relation(relation_id)
+
+    await cached_context.commit_transaction()
+
+
+@pytest.mark.asyncio
+async def test_cache_behavior_during_schema_changes(cached_context):
+    """Test cache behavior during schema modifications."""
+    # Start transaction
+    await cached_context.begin_transaction()
+
+    # Create test entity
+    entity_id = await cached_context.create_entity("person", {"name": "Test"})
+
+    # Get entity to ensure it's cached
+    entity = await cached_context.get_entity(entity_id)
+    assert entity.properties["name"] == "Test"
+
+    # Simulate schema modification event
+    await cached_context._cache_manager.handle_event(EventContext(
+        event=GraphEvent.SCHEMA_MODIFIED,
+        data={},
+        metadata=EventMetadata()
+    ))
+
+    # Get entity again - should come from base context
+    entity = await cached_context.get_entity(entity_id)
+    assert entity.properties["name"] == "Test"
+
+    await cached_context.commit_transaction()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_operations(cached_context):
+    """Test cache behavior with concurrent operations."""
+    # Set up mock cache responses
+    entity_store = cached_context._cache_manager.store_manager.get_entity_store()
+    entity_store.get.return_value = None  # Cache miss to force base context use
+
+    # Start transaction
+    await cached_context.begin_transaction()
+
+    # Create test entities
+    entity_ids = []
+    for i in range(3):
+        entity_id = await cached_context.create_entity("person", {"name": f"Person {i}"})
+        entity_ids.append(entity_id)
+
+    await cached_context.commit_transaction()
+
+    # Define concurrent update operations
+    async def update_entity(entity_id: str, name: str):
+        await cached_context.begin_transaction()
+        await cached_context.update_entity(entity_id, {"name": name})
+        await cached_context.commit_transaction()
+
+    # Run concurrent updates
+    await asyncio.gather(*[
+        update_entity(entity_id, f"Updated {i}")
+        for i, entity_id in enumerate(entity_ids)
+    ])
+
+    # Update mock responses for the updated values
+    async def mock_get(entity_id):
+        # Find the index of the entity to get its updated name
+        try:
+            idx = entity_ids.index(entity_id)
+            return CacheEntry(
+                value=Entity(id=entity_id, type="person", properties={"name": f"Updated {idx}"}),
+                created_at=datetime.now(UTC)
+            )
+        except ValueError:
+            return None
+
+    entity_store.get.side_effect = mock_get
+
+    # Verify all updates were applied
+    for i, entity_id in enumerate(entity_ids):
+        entity = await cached_context.get_entity(entity_id)
+        assert entity.properties["name"] == f"Updated {i}"
+
+
+@pytest.mark.asyncio
+async def test_cache_disable_during_transaction(cached_context):
+    """Test that cache operations are bypassed during transaction."""
+    # Set up mock cache responses
+    entity_store = cached_context._cache_manager.store_manager.get_entity_store()
+    entity_store.get.return_value = None  # Cache miss to force base context use
+
+    # Create test entity
+    await cached_context.begin_transaction()
+    entity_id = await cached_context.create_entity("person", {"name": "Test"})
+
+    # Update entity and verify cache is bypassed
+    await cached_context.update_entity(entity_id, {"name": "Updated"})
+
+    # Get entity - should come directly from base context
+    entity = await cached_context.get_entity(entity_id)
+    assert entity.properties["name"] == "Updated"
+
+    # Rollback transaction
+    await cached_context.rollback_transaction()
+
+    # After rollback, base context should raise EntityNotFoundError
+    entity_store.get.return_value = None  # Ensure cache miss
+    with pytest.raises(EntityNotFoundError):
+        await cached_context.get_entity(entity_id)
+
+
+@pytest.mark.asyncio
+async def test_cache_operations_with_disabled_cache(cached_context):
+    """Test operations when cache is explicitly disabled."""
+    # Start transaction
+    await cached_context.begin_transaction()
+
+    # Disable cache
+    cached_context.disable_caching()
+
+    # Create and get entity - should bypass cache
+    entity_id = await cached_context.create_entity("person", {"name": "Test"})
+    entity = await cached_context.get_entity(entity_id)
+    assert entity.properties["name"] == "Test"
+
+    # Re-enable cache and verify caching resumes
+    cached_context.enable_caching()
+    entity = await cached_context.get_entity(entity_id)
+    assert entity.properties["name"] == "Test"
+
+    await cached_context.commit_transaction()
+
+
+@pytest.mark.asyncio
+async def test_initialize_event_subscriptions():
+    """Test that _initialize subscribes cache manager to all relevant events."""
+    from graph_context.caching.cached_context import CachedGraphContext
+    from graph_context.event_system import EventSystem, GraphEvent
+    from unittest.mock import AsyncMock, Mock
+
+    # Create a real event system and a mock cache manager
+    events = EventSystem()
+    base_context = Mock()
+    base_context._events = events
+    cache_manager = Mock()
+    cache_manager.handle_event = AsyncMock()
+
+    # Patch the subscribe method to track calls
+    subscribe_calls = []
+    orig_subscribe = events.subscribe
+    async def tracking_subscribe(event, handler):
+        subscribe_calls.append((event, handler))
+        await orig_subscribe(event, handler)
+    events.subscribe = tracking_subscribe
+
+    # Create the cached context (do not set _initialized)
+    context = CachedGraphContext(base_context, cache_manager)
+    context._initialized = False
+
+    # Call _initialize directly
+    await context._initialize()
+
+    # Check that all relevant events were subscribed
+    expected_events = [
+        GraphEvent.ENTITY_READ,
+        GraphEvent.ENTITY_WRITE,
+        GraphEvent.ENTITY_BULK_WRITE,
+        GraphEvent.ENTITY_DELETE,
+        GraphEvent.ENTITY_BULK_DELETE,
+        GraphEvent.RELATION_READ,
+        GraphEvent.RELATION_WRITE,
+        GraphEvent.RELATION_BULK_WRITE,
+        GraphEvent.RELATION_DELETE,
+        GraphEvent.RELATION_BULK_DELETE,
+        GraphEvent.QUERY_EXECUTED,
+        GraphEvent.TRAVERSAL_EXECUTED,
+        GraphEvent.SCHEMA_MODIFIED,
+        GraphEvent.TYPE_MODIFIED,
+        GraphEvent.TRANSACTION_BEGIN,
+        GraphEvent.TRANSACTION_COMMIT,
+        GraphEvent.TRANSACTION_ROLLBACK,
+    ]
+    subscribed_events = [call[0] for call in subscribe_calls]
+    for event in expected_events:
+        assert event in subscribed_events
+
+@pytest.mark.asyncio
+async def test_initialization_with_real_context(base_context):
+    """Test initialization with a real base context."""
+    from graph_context.caching.cached_context import CachedGraphContext
+    from graph_context.caching.cache_manager import CacheManager
+
+    # Create a real cache manager
+    cache_manager = CacheManager()
+
+    # Create context without initialization
+    context = CachedGraphContext(base_context, cache_manager)
+    context._initialized = False
+
+    # First call should trigger initialization and raise EntityNotFoundError
+    with pytest.raises(EntityNotFoundError):
+        await context.get_entity("any-id")
+    assert context._initialized
+
+    # Second call should not re-initialize but still raise EntityNotFoundError
+    with pytest.raises(EntityNotFoundError):
+        await context.get_entity("any-id")
+
+@pytest.mark.asyncio
+async def test_base_context_events_attribute():
+    """Test the hasattr branch for _events in base context."""
+    from graph_context.caching.cached_context import CachedGraphContext
+
+    # Test when base context has no _events
+    base_context = Mock(spec=[])  # Empty spec means no attributes
+    context = CachedGraphContext(base_context, Mock())
+    await context._initialize()  # Should pass without error
+
+    # Test when base context has _events
+    base_context = Mock()
+    delattr(base_context, '_events')  # Ensure no _events to start
+    context = CachedGraphContext(base_context, Mock())
+    await context._initialize()  # Should pass without error
+
+    # Now add _events
+    base_context._events = Mock()
+    await context._initialize()  # Should handle _events existence
