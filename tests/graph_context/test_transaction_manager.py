@@ -76,7 +76,9 @@ class TestTransactionManager:
         assert "Operation cannot be performed in a transaction" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_begin_transaction_success(self, transaction_manager, mock_store, mock_events):
+    async def test_begin_transaction_success(
+        self, transaction_manager, mock_store, mock_events
+    ):
         """Test begin_transaction successful execution."""
         await transaction_manager.begin_transaction()
 
@@ -94,7 +96,9 @@ class TestTransactionManager:
         assert "Transaction already in progress" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_commit_transaction_success(self, transaction_manager, mock_store, mock_events):
+    async def test_commit_transaction_success(
+        self, transaction_manager, mock_store, mock_events
+    ):
         """Test commit_transaction successful execution."""
         transaction_manager._in_transaction = True
 
@@ -112,7 +116,9 @@ class TestTransactionManager:
         assert "No transaction in progress" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_rollback_transaction_success(self, transaction_manager, mock_store, mock_events):
+    async def test_rollback_transaction_success(
+        self, transaction_manager, mock_store, mock_events
+    ):
         """Test rollback_transaction successful execution."""
         transaction_manager._in_transaction = True
 

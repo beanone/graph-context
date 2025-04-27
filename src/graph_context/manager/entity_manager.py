@@ -57,7 +57,9 @@ class EntityManager:
         entity = await self._store.get_entity(entity_id)
 
         if entity:
-            await self._events.emit(GraphEvent.ENTITY_READ, entity_id=entity_id, entity_type=entity.type)
+            await self._events.emit(
+                GraphEvent.ENTITY_READ, entity_id=entity_id, entity_type=entity.type
+            )
 
         return entity
 
@@ -82,7 +84,9 @@ class EntityManager:
 
         entity_id = await self._store.create_entity(entity_type, validated_props)
 
-        await self._events.emit(GraphEvent.ENTITY_WRITE, entity_id=entity_id, entity_type=entity_type)
+        await self._events.emit(
+            GraphEvent.ENTITY_WRITE, entity_id=entity_id, entity_type=entity_type
+        )
 
         return entity_id
 
@@ -114,7 +118,9 @@ class EntityManager:
         success = await self._store.update_entity(entity_id, validated_props)
 
         if success:
-            await self._events.emit(GraphEvent.ENTITY_WRITE, entity_id=entity_id, entity_type=entity.type)
+            await self._events.emit(
+                GraphEvent.ENTITY_WRITE, entity_id=entity_id, entity_type=entity.type
+            )
 
         return success
 
@@ -141,6 +147,8 @@ class EntityManager:
         success = await self._store.delete_entity(entity_id)
 
         if success:
-            await self._events.emit(GraphEvent.ENTITY_DELETE, entity_id=entity_id, entity_type=entity.type)
+            await self._events.emit(
+                GraphEvent.ENTITY_DELETE, entity_id=entity_id, entity_type=entity.type
+            )
 
         return success

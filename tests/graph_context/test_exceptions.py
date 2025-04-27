@@ -56,7 +56,9 @@ def test_entity_not_found_error():
 
     # Test with both parameters
     exc = EntityNotFoundError(entity_id, entity_type)
-    assert str(exc) == f"Entity with ID '{entity_id}' and type '{entity_type}' not found"
+    assert (
+        str(exc) == f"Entity with ID '{entity_id}' and type '{entity_type}' not found"
+    )
     assert isinstance(exc, GraphContextError)
     assert exc.details["entity_id"] == entity_id
     assert exc.details["entity_type"] == entity_type
@@ -95,12 +97,17 @@ def test_relation_not_found_error():
 
     # Test with relation_type only
     exc = RelationNotFoundError(relation_id, relation_type)
-    assert str(exc) == f"Relation with ID '{relation_id}' and type '{relation_type}' not found"
+    assert (
+        str(exc)
+        == f"Relation with ID '{relation_id}' and type '{relation_type}' not found"
+    )
     assert exc.details["relation_id"] == relation_id
     assert exc.details["relation_type"] == relation_type
 
     # Test with all optional parameters
-    exc = RelationNotFoundError(relation_id, relation_type="KNOWS", from_entity="123", to_entity="456")
+    exc = RelationNotFoundError(
+        relation_id, relation_type="KNOWS", from_entity="123", to_entity="456"
+    )
     assert exc.details["relation_id"] == relation_id
     assert exc.details["relation_type"] == "KNOWS"
     assert exc.details["from_entity"] == "123"
@@ -127,7 +134,10 @@ def test_duplicate_entity_error():
 
     # Test with both parameters
     exc = DuplicateEntityError(entity_id, entity_type)
-    assert str(exc) == f"Entity with ID '{entity_id}' and type '{entity_type}' already exists"
+    assert (
+        str(exc)
+        == f"Entity with ID '{entity_id}' and type '{entity_type}' already exists"
+    )
     assert isinstance(exc, GraphContextError)
 
     # Test without entity_type
@@ -146,7 +156,10 @@ def test_duplicate_relation_error():
 
     # Test with both parameters
     exc = DuplicateRelationError(relation_id, relation_type)
-    assert str(exc) == f"Relation with ID '{relation_id}' and type '{relation_type}' already exists"
+    assert (
+        str(exc)
+        == f"Relation with ID '{relation_id}' and type '{relation_type}' already exists"
+    )
     assert isinstance(exc, GraphContextError)
 
     # Test without relation_type

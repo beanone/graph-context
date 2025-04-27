@@ -140,18 +140,21 @@ class EventSystem:
         except ValueError:
             pass  # Handler wasn't registered, ignore
 
-    async def emit(self, event: GraphEvent, metadata: Optional[EventMetadata] = None, **data: Any) -> None:
+    async def emit(
+        self, event: GraphEvent, metadata: Optional[EventMetadata] = None, **data: Any
+    ) -> None:
         """Emit a graph event to all subscribers.
 
         Args:
             event: The graph event that occurred
-            metadata: Optional event metadata. If not provided, default metadata will be created.
+            metadata: Optional event metadata. If not provided, default metadata will be
+            created.
             **data: Any relevant data about the operation
         """
         if not self._enabled:
             return
 
-        # If metadata is not provided, create default metadata based on event type and data
+        # If metadata not provided, create default metadata based on event type and data
         if metadata is None:
             metadata_kwargs = self.create_metadata(event, data)
 

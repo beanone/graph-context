@@ -105,7 +105,9 @@ class RelationManager:
             relation_type, from_entity_obj.type, to_entity_obj.type, properties or {}
         )
 
-        relation_id = await self._store.create_relation(relation_type, from_entity, to_entity, validated_props)
+        relation_id = await self._store.create_relation(
+            relation_type, from_entity, to_entity, validated_props
+        )
 
         await self._events.emit(
             GraphEvent.RELATION_WRITE,
@@ -149,7 +151,9 @@ class RelationManager:
         if not to_entity:
             raise EntityNotFoundError(f"To entity not found: {relation.to_entity}")
 
-        validated_props = self._validator.validate_relation(relation.type, from_entity.type, to_entity.type, properties)
+        validated_props = self._validator.validate_relation(
+            relation.type, from_entity.type, to_entity.type, properties
+        )
 
         success = await self._store.update_relation(relation_id, validated_props)
 

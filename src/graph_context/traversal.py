@@ -38,9 +38,9 @@ class TraversalSpec:
     """Specification for how to traverse the graph."""
 
     direction: str = "any"  # "outbound", "inbound", or "any"
-    relation_types: Optional[List[str]] = (
-        None  # List of relation types to follow (None for any)
-    )
+    relation_types: Optional[
+        List[str]
+    ] = None  # List of relation types to follow (None for any)
     max_depth: float = float("inf")  # Maximum traversal depth
     include_start: bool = False  # Whether to include start entity in results
     return_paths: bool = False  # Whether to return full paths instead of just entities

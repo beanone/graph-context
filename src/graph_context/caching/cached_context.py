@@ -81,7 +81,9 @@ class CacheTransactionManager:
 
         # Notify cache manager about transaction begin
         await self._cache_manager.handle_event(
-            EventContext(event=GraphEvent.TRANSACTION_BEGIN, data={}, metadata=EventMetadata())
+            EventContext(
+                event=GraphEvent.TRANSACTION_BEGIN, data={}, metadata=EventMetadata()
+            )
         )
         logger.debug("Transaction begin event sent to cache manager")
 
@@ -111,7 +113,9 @@ class CacheTransactionManager:
 
         # Notify cache manager about transaction commit
         await self._cache_manager.handle_event(
-            EventContext(event=GraphEvent.TRANSACTION_COMMIT, data={}, metadata=EventMetadata())
+            EventContext(
+                event=GraphEvent.TRANSACTION_COMMIT, data={}, metadata=EventMetadata()
+            )
         )
         logger.debug("Transaction commit event sent to cache manager")
 
@@ -141,7 +145,9 @@ class CacheTransactionManager:
 
         # Notify cache manager about transaction rollback
         await self._cache_manager.handle_event(
-            EventContext(event=GraphEvent.TRANSACTION_ROLLBACK, data={}, metadata=EventMetadata())
+            EventContext(
+                event=GraphEvent.TRANSACTION_ROLLBACK, data={}, metadata=EventMetadata()
+            )
         )
         logger.debug("Transaction rollback event sent to cache manager")
 
@@ -173,23 +179,57 @@ class CachedGraphContext(GraphContext):
 
         # Subscribe cache manager to base context events
         if hasattr(self._base, "_events"):
-            await self._base._events.subscribe(GraphEvent.ENTITY_READ, self._cache_manager.handle_event)
-            await self._base._events.subscribe(GraphEvent.ENTITY_WRITE, self._cache_manager.handle_event)
-            await self._base._events.subscribe(GraphEvent.ENTITY_BULK_WRITE, self._cache_manager.handle_event)
-            await self._base._events.subscribe(GraphEvent.ENTITY_DELETE, self._cache_manager.handle_event)
-            await self._base._events.subscribe(GraphEvent.ENTITY_BULK_DELETE, self._cache_manager.handle_event)
-            await self._base._events.subscribe(GraphEvent.RELATION_READ, self._cache_manager.handle_event)
-            await self._base._events.subscribe(GraphEvent.RELATION_WRITE, self._cache_manager.handle_event)
-            await self._base._events.subscribe(GraphEvent.RELATION_BULK_WRITE, self._cache_manager.handle_event)
-            await self._base._events.subscribe(GraphEvent.RELATION_DELETE, self._cache_manager.handle_event)
-            await self._base._events.subscribe(GraphEvent.RELATION_BULK_DELETE, self._cache_manager.handle_event)
-            await self._base._events.subscribe(GraphEvent.QUERY_EXECUTED, self._cache_manager.handle_event)
-            await self._base._events.subscribe(GraphEvent.TRAVERSAL_EXECUTED, self._cache_manager.handle_event)
-            await self._base._events.subscribe(GraphEvent.SCHEMA_MODIFIED, self._cache_manager.handle_event)
-            await self._base._events.subscribe(GraphEvent.TYPE_MODIFIED, self._cache_manager.handle_event)
-            await self._base._events.subscribe(GraphEvent.TRANSACTION_BEGIN, self._cache_manager.handle_event)
-            await self._base._events.subscribe(GraphEvent.TRANSACTION_COMMIT, self._cache_manager.handle_event)
-            await self._base._events.subscribe(GraphEvent.TRANSACTION_ROLLBACK, self._cache_manager.handle_event)
+            await self._base._events.subscribe(
+                GraphEvent.ENTITY_READ, self._cache_manager.handle_event
+            )
+            await self._base._events.subscribe(
+                GraphEvent.ENTITY_WRITE, self._cache_manager.handle_event
+            )
+            await self._base._events.subscribe(
+                GraphEvent.ENTITY_BULK_WRITE, self._cache_manager.handle_event
+            )
+            await self._base._events.subscribe(
+                GraphEvent.ENTITY_DELETE, self._cache_manager.handle_event
+            )
+            await self._base._events.subscribe(
+                GraphEvent.ENTITY_BULK_DELETE, self._cache_manager.handle_event
+            )
+            await self._base._events.subscribe(
+                GraphEvent.RELATION_READ, self._cache_manager.handle_event
+            )
+            await self._base._events.subscribe(
+                GraphEvent.RELATION_WRITE, self._cache_manager.handle_event
+            )
+            await self._base._events.subscribe(
+                GraphEvent.RELATION_BULK_WRITE, self._cache_manager.handle_event
+            )
+            await self._base._events.subscribe(
+                GraphEvent.RELATION_DELETE, self._cache_manager.handle_event
+            )
+            await self._base._events.subscribe(
+                GraphEvent.RELATION_BULK_DELETE, self._cache_manager.handle_event
+            )
+            await self._base._events.subscribe(
+                GraphEvent.QUERY_EXECUTED, self._cache_manager.handle_event
+            )
+            await self._base._events.subscribe(
+                GraphEvent.TRAVERSAL_EXECUTED, self._cache_manager.handle_event
+            )
+            await self._base._events.subscribe(
+                GraphEvent.SCHEMA_MODIFIED, self._cache_manager.handle_event
+            )
+            await self._base._events.subscribe(
+                GraphEvent.TYPE_MODIFIED, self._cache_manager.handle_event
+            )
+            await self._base._events.subscribe(
+                GraphEvent.TRANSACTION_BEGIN, self._cache_manager.handle_event
+            )
+            await self._base._events.subscribe(
+                GraphEvent.TRANSACTION_COMMIT, self._cache_manager.handle_event
+            )
+            await self._base._events.subscribe(
+                GraphEvent.TRANSACTION_ROLLBACK, self._cache_manager.handle_event
+            )
 
         self._initialized = True
 
@@ -225,7 +265,10 @@ class CachedGraphContext(GraphContext):
         logger.debug(f"Getting entity {entity_id}")
 
         # Skip cache if in transaction or caching is disabled
-        if self._transaction.is_in_transaction() or not self._cache_manager.is_enabled():
+        if (
+            self._transaction.is_in_transaction()
+            or not self._cache_manager.is_enabled()
+        ):
             logger.debug(
                 f"Bypassing cache for entity {entity_id} "
                 f"(transaction={self._transaction.is_in_transaction()}, "
@@ -238,7 +281,9 @@ class CachedGraphContext(GraphContext):
             return result
 
         # Try to get from cache
-        cached = await self._cache_manager.store_manager.get_entity_store().get(entity_id)
+        cached = await self._cache_manager.store_manager.get_entity_store().get(
+            entity_id
+        )
         if cached is not None:
             logger.debug(f"Found entity {entity_id} in cache")
             return cached.value
@@ -250,7 +295,9 @@ class CachedGraphContext(GraphContext):
         # Cache the result if found
         if result is not None:
             entry = CacheEntry(value=result, entity_type=result.type)
-            await self._cache_manager.store_manager.get_entity_store().set(entity_id, entry)
+            await self._cache_manager.store_manager.get_entity_store().set(
+                entity_id, entry
+            )
             logger.debug(f"Cached entity {entity_id} from base context")
             return result
         else:
@@ -272,14 +319,19 @@ class CachedGraphContext(GraphContext):
         await self._initialize()
 
         # Skip cache if in transaction or caching is disabled
-        if self._transaction.is_in_transaction() or not self._cache_manager.is_enabled():
+        if (
+            self._transaction.is_in_transaction()
+            or not self._cache_manager.is_enabled()
+        ):
             result = await self._base.get_relation(relation_id)
             if result is None:
                 raise RelationNotFoundError(f"Relation {relation_id} not found")
             return result
 
         # Try to get from cache first
-        cached = await self._cache_manager.store_manager.get_relation_store().get(relation_id)
+        cached = await self._cache_manager.store_manager.get_relation_store().get(
+            relation_id
+        )
         if cached is not None:
             return cached.value
 
@@ -289,7 +341,9 @@ class CachedGraphContext(GraphContext):
         # Cache the result if found
         if result is not None:
             entry = CacheEntry(value=result, relation_type=result.type)
-            await self._cache_manager.store_manager.get_relation_store().set(relation_id, entry)
+            await self._cache_manager.store_manager.get_relation_store().set(
+                relation_id, entry
+            )
             return result
         else:
             raise RelationNotFoundError(f"Relation {relation_id} not found")
@@ -307,13 +361,18 @@ class CachedGraphContext(GraphContext):
         logger.debug(f"Executing query with spec: {query_spec}")
 
         # Skip cache if in transaction or caching is disabled
-        if self._transaction.is_in_transaction() or not self._cache_manager.is_enabled():
+        if (
+            self._transaction.is_in_transaction()
+            or not self._cache_manager.is_enabled()
+        ):
             logger.debug("Bypassing cache for query")
             return await self._base.query(query_spec) or []
 
         # Try to get from cache first
         query_hash = self._cache_manager._hash_query(query_spec)
-        cached = await self._cache_manager.store_manager.get_query_store().get(query_hash)
+        cached = await self._cache_manager.store_manager.get_query_store().get(
+            query_hash
+        )
         if cached is not None:
             logger.debug(f"Query cache hit for hash {query_hash}")
             return cached.value
@@ -325,7 +384,9 @@ class CachedGraphContext(GraphContext):
         # Cache the result
         if result is not None:
             entry = CacheEntry(value=result, query_hash=query_hash)
-            await self._cache_manager.store_manager.get_query_store().set(query_hash, entry)
+            await self._cache_manager.store_manager.get_query_store().set(
+                query_hash, entry
+            )
             logger.debug(f"Cached query results with hash {query_hash}")
 
             # Notify cache manager about the query
@@ -339,7 +400,9 @@ class CachedGraphContext(GraphContext):
 
         return result or []  # Ensure we always return a list
 
-    async def traverse(self, start_entity: str, traversal_spec: TraversalSpec) -> list[Entity]:
+    async def traverse(
+        self, start_entity: str, traversal_spec: TraversalSpec
+    ) -> list[Entity]:
         """Execute a traversal in the graph.
 
         Args:
@@ -352,12 +415,17 @@ class CachedGraphContext(GraphContext):
         await self._initialize()
 
         # Skip cache if in transaction or caching is disabled
-        if self._transaction.is_in_transaction() or not self._cache_manager.is_enabled():
+        if (
+            self._transaction.is_in_transaction()
+            or not self._cache_manager.is_enabled()
+        ):
             return await self._base.traverse(start_entity, traversal_spec) or []
 
         # Try to get from cache first
         traversal_hash = self._cache_manager._hash_query(traversal_spec)
-        cached = await self._cache_manager.store_manager.get_traversal_store().get(traversal_hash)
+        cached = await self._cache_manager.store_manager.get_traversal_store().get(
+            traversal_hash
+        )
         if cached is not None:
             return cached.value
 
@@ -367,7 +435,9 @@ class CachedGraphContext(GraphContext):
         # Cache the result
         if result is not None:
             entry = CacheEntry(value=result, query_hash=traversal_hash)
-            await self._cache_manager.store_manager.get_traversal_store().set(traversal_hash, entry)
+            await self._cache_manager.store_manager.get_traversal_store().set(
+                traversal_hash, entry
+            )
 
         return result or []  # Ensure we always return a list
 
@@ -381,7 +451,9 @@ class CachedGraphContext(GraphContext):
             entity = await self._base.get_entity(entity_id)
             if entity is not None:
                 entry = CacheEntry(value=entity, entity_type=entity_type)
-                await self._cache_manager.store_manager.get_entity_store().set(entity_id, entry)
+                await self._cache_manager.store_manager.get_entity_store().set(
+                    entity_id, entry
+                )
 
         # Notify cache manager about the write
         await self._cache_manager.handle_event(
@@ -451,14 +523,18 @@ class CachedGraphContext(GraphContext):
     ) -> str:
         """Create a new relation."""
         await self._initialize()
-        relation_id = await self._base.create_relation(relation_type, from_entity, to_entity, properties)
+        relation_id = await self._base.create_relation(
+            relation_type, from_entity, to_entity, properties
+        )
 
         # Cache the newly created relation if not in transaction
         if not self._transaction.is_in_transaction():
             relation = await self._base.get_relation(relation_id)
             if relation is not None:
                 entry = CacheEntry(value=relation, relation_type=relation_type)
-                await self._cache_manager.store_manager.get_relation_store().set(relation_id, entry)
+                await self._cache_manager.store_manager.get_relation_store().set(
+                    relation_id, entry
+                )
 
         # Notify cache manager about the write
         await self._cache_manager.handle_event(
@@ -471,14 +547,18 @@ class CachedGraphContext(GraphContext):
 
         return relation_id
 
-    async def update_relation(self, relation_id: str, properties: Dict[str, Any]) -> bool:
+    async def update_relation(
+        self, relation_id: str, properties: Dict[str, Any]
+    ) -> bool:
         """Update an existing relation."""
         await self._initialize()
         success = await self._base.update_relation(relation_id, properties)
 
         if success:
             # Invalidate cache
-            await self._cache_manager.store_manager.get_relation_store().delete(relation_id)
+            await self._cache_manager.store_manager.get_relation_store().delete(
+                relation_id
+            )
 
             # Notify cache manager about the write
             await self._cache_manager.handle_event(
@@ -498,7 +578,9 @@ class CachedGraphContext(GraphContext):
 
         if success:
             # Invalidate cache
-            await self._cache_manager.store_manager.get_relation_store().delete(relation_id)
+            await self._cache_manager.store_manager.get_relation_store().delete(
+                relation_id
+            )
 
             # Notify cache manager about the delete
             await self._cache_manager.handle_event(
