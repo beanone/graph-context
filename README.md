@@ -450,8 +450,7 @@ await context.delete_entity(entity_id)
 relation_id = await context.create_relation(
     relation_type="KNOWS",
     from_entity=alice_id,
-    to_entity=bob_id,
-    properties={"since": 2023}
+    to_entity=bob_id
 )
 
 # Get a relation
@@ -558,3 +557,326 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [Graph Context Architecture](docs/graph-context.md)
 - [Event System](docs/event-system.md) - Flexible pub/sub system for implementing cross-cutting concerns
 - [Caching Implementation Plan](docs/caching-implementation-plan.md)
+
+## Sample Usage with FastAPI
+
+Here's a complete example of how to use graph-context with FastAPI to create a REST API for managing a social network graph:
+
+```python
+from fastapi import FastAPI, HTTPException, Depends
+from pydantic import BaseModel, EmailStr, Field
+from typing import List, Optional
+from datetime import datetime, UTC
+import re
+from graph_context import BaseGraphContext
+from graph_context.types import EntityType, PropertyDefinition, RelationType, PropertyType
+from graph_context.exceptions import (
+    GraphContextError,
+    ValidationError,
+    SchemaError,
+    TransactionError,
+    EntityNotFoundError
+)
+
+# Define your schema
+class SocialGraphContext(BaseGraphContext):
+    def __init__(self):
+        super().__init__()
+        # Register entity types with proper property definitions and constraints
+        self.register_entity_type(EntityType(
+            name="Person",
+            properties={
+                "name": PropertyDefinition(
+                    type=PropertyType.STRING,
+                    required=True,
+                    constraints={
+                        "min_length": 2,
+                        "max_length": 100
+                    }
+                ),
+                "email": PropertyDefinition(
+                    type=PropertyType.STRING,
+                    required=True,
+                    constraints={
+                        "pattern": r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+                    }
+                ),
+                "age": PropertyDefinition(
+                    type=PropertyType.INTEGER,
+                    required=False,
+                    constraints={
+                        "minimum": 0,
+                        "maximum": 150
+                    }
+                ),
+                "interests": PropertyDefinition(
+                    type=PropertyType.LIST,
+                    required=False,
+                    constraints={
+                        "item_type": PropertyType.STRING,
+                        "min_items": 0,
+                        "max_items": 10
+                    }
+                )
+            }
+        ))
+
+        # Register relation types with proper type constraints
+        self.register_relation_type(RelationType(
+            name="FRIENDS_WITH",
+            from_types=["Person"],
+            to_types=["Person"],
+            properties={
+                "since": PropertyDefinition(
+                    type=PropertyType.DATETIME,
+                    required=True
+                ),
+                "strength": PropertyDefinition(
+                    type=PropertyType.STRING,
+                    required=False,
+                    constraints={
+                        "pattern": r"^(close|casual|acquaintance)$"
+                    }
+                )
+            }
+        ))
+
+# Pydantic models for API with proper validation
+class PersonCreate(BaseModel):
+    name: str = Field(..., min_length=2, max_length=100)
+    email: EmailStr
+    age: Optional[int] = Field(None, ge=0, le=150)
+    interests: Optional[List[str]] = Field(None, max_items=10)
+
+class PersonResponse(BaseModel):
+    id: str
+    name: str
+    email: str
+    age: Optional[int] = None
+    interests: Optional[List[str]] = None
+
+class FriendRequest(BaseModel):
+    friend_id: str
+    strength: Optional[str] = Field(None, pattern=r"^(close|casual|acquaintance)$")
+
+# FastAPI app setup
+app = FastAPI(title="Social Network API")
+context = SocialGraphContext()
+
+# Dependency to get graph context
+async def get_context():
+    return context
+
+@app.on_event("shutdown")
+async def shutdown():
+    await context.cleanup()
+
+# CRUD endpoints
+@app.post("/people", response_model=PersonResponse)
+async def create_person(
+    person: PersonCreate,
+    ctx: BaseGraphContext = Depends(get_context)
+):
+    try:
+        await ctx.begin_transaction()
+
+        # Create person entity with validated properties
+        person_id = await ctx.create_entity(
+            entity_type="Person",
+            properties=person.model_dump(exclude_none=True)
+        )
+
+        # Get created person
+        person_entity = await ctx.get_entity(person_id)
+
+        await ctx.commit_transaction()
+        return PersonResponse(id=person_id, **person_entity.properties)
+    except ValidationError as e:
+        await ctx.rollback_transaction()
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": str(e),
+                "field": e.details.get("field"),
+                "constraint": e.details.get("constraint")
+            }
+        )
+    except SchemaError as e:
+        await ctx.rollback_transaction()
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": str(e),
+                "schema_type": e.details.get("schema_type")
+            }
+        )
+    except TransactionError as e:
+        await ctx.rollback_transaction()
+        raise HTTPException(status_code=500, detail=str(e))
+    except GraphContextError as e:
+        await ctx.rollback_transaction()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/people/{person_id}", response_model=PersonResponse)
+async def get_person(
+    person_id: str,
+    ctx: BaseGraphContext = Depends(get_context)
+):
+    try:
+        person = await ctx.get_entity(person_id)
+        if not person:
+            raise HTTPException(status_code=404, detail="Person not found")
+        return PersonResponse(id=person_id, **person.properties)
+    except EntityNotFoundError:
+        raise HTTPException(status_code=404, detail="Person not found")
+    except GraphContextError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/people/{person_id}", response_model=PersonResponse)
+async def update_person(
+    person_id: str,
+    person: PersonCreate,
+    ctx: BaseGraphContext = Depends(get_context)
+):
+    try:
+        await ctx.begin_transaction()
+
+        # Update person entity with validated properties
+        success = await ctx.update_entity(
+            entity_id=person_id,
+            properties=person.model_dump(exclude_none=True)
+        )
+
+        if not success:
+            raise HTTPException(status_code=404, detail="Person not found")
+
+        # Get updated person
+        person_entity = await ctx.get_entity(person_id)
+
+        await ctx.commit_transaction()
+        return PersonResponse(id=person_id, **person_entity.properties)
+    except ValidationError as e:
+        await ctx.rollback_transaction()
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": str(e),
+                "field": e.details.get("field"),
+                "constraint": e.details.get("constraint")
+            }
+        )
+    except SchemaError as e:
+        await ctx.rollback_transaction()
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": str(e),
+                "schema_type": e.details.get("schema_type")
+            }
+        )
+    except TransactionError as e:
+        await ctx.rollback_transaction()
+        raise HTTPException(status_code=500, detail=str(e))
+    except GraphContextError as e:
+        await ctx.rollback_transaction()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/people/{person_id}")
+async def delete_person(
+    person_id: str,
+    ctx: BaseGraphContext = Depends(get_context)
+):
+    try:
+        await ctx.begin_transaction()
+        success = await ctx.delete_entity(person_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Person not found")
+        await ctx.commit_transaction()
+        return {"message": "Person deleted successfully"}
+    except TransactionError as e:
+        await ctx.rollback_transaction()
+        raise HTTPException(status_code=500, detail=str(e))
+    except GraphContextError as e:
+        await ctx.rollback_transaction()
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Friend relationship endpoints
+@app.post("/people/{person_id}/friends")
+async def add_friend(
+    person_id: str,
+    friend: FriendRequest,
+    ctx: BaseGraphContext = Depends(get_context)
+):
+    try:
+        await ctx.begin_transaction()
+
+        # Create friend relationship with validated properties
+        await ctx.create_relation(
+            relation_type="FRIENDS_WITH",
+            from_entity=person_id,
+            to_entity=friend.friend_id,
+            properties={
+                "since": datetime.now(UTC),
+                "strength": friend.strength
+            } if friend.strength else {"since": datetime.now(UTC)}
+        )
+
+        await ctx.commit_transaction()
+        return {"message": "Friend added successfully"}
+    except EntityNotFoundError:
+        await ctx.rollback_transaction()
+        raise HTTPException(status_code=404, detail="Person or friend not found")
+    except ValidationError as e:
+        await ctx.rollback_transaction()
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": str(e),
+                "field": e.details.get("field"),
+                "constraint": e.details.get("constraint")
+            }
+        )
+    except SchemaError as e:
+        await ctx.rollback_transaction()
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": str(e),
+                "schema_type": e.details.get("schema_type")
+            }
+        )
+    except TransactionError as e:
+        await ctx.rollback_transaction()
+        raise HTTPException(status_code=500, detail=str(e))
+    except GraphContextError as e:
+        await ctx.rollback_transaction()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/people/{person_id}/friends", response_model=List[PersonResponse])
+async def get_friends(
+    person_id: str,
+    ctx: BaseGraphContext = Depends(get_context)
+):
+    try:
+        # Query for friends with proper query specification
+        friends = await ctx.query({
+            "entity_type": "Person",
+            "conditions": [
+                {
+                    "relation_type": "FRIENDS_WITH",
+                    "from_entity": person_id,
+                    "direction": "outbound"
+                }
+            ]
+        })
+
+        return [
+            PersonResponse(id=friend.id, **friend.properties)
+            for friend in friends
+        ]
+    except EntityNotFoundError:
+        raise HTTPException(status_code=404, detail="Person not found")
+    except GraphContextError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Run with: uvicorn main:app --reload
