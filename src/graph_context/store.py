@@ -4,6 +4,7 @@ Graph store factory.
 This module provides a factory for creating store instances based on configuration.
 """
 
+import importlib
 import json
 import os
 from dataclasses import dataclass
@@ -39,8 +40,26 @@ class GraphStoreFactory:
     def create(cls) -> GraphStore:
         """Create a GraphStore instance based on internal configuration."""
         config = cls._load_config()
+
+        # Check if store type is registered
         if config.type not in cls._store_types:
-            raise ValueError(f"Unknown store type: {config.type}")
+            # Try to load dynamically if it looks like a module path
+            if "." in config.type:
+                try:
+                    module_path, class_name = config.type.rsplit(".", 1)
+                    module = importlib.import_module(module_path)
+                    store_class = getattr(module, class_name)
+                    if not issubclass(store_class, GraphStore):
+                        raise ValueError(
+                            f"{class_name} is not a valid GraphStore implementation"
+                        )
+                    # Register the dynamically loaded class
+                    cls.register_store_type(config.type, store_class)
+                except (ImportError, AttributeError) as err:
+                    raise ValueError(f"Unknown store type: {config.type}") from err
+            else:
+                raise ValueError(f"Unknown store type: {config.type}")
+
         return cls._store_types[config.type](config.config)
 
     @classmethod

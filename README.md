@@ -41,6 +41,7 @@ A flexible and type-safe graph database abstraction layer for Python, providing 
 - [License](#license)
 - [Acknowledgments](#acknowledgments)
 - [Documentation](#documentation)
+- [Sample Usage with FastAPI](#sample-usage-with-fastapi)
 
 - 🔍 **Type-Safe**: Full type hints and runtime type checking
 - 🔒 **Schema Validation**: Strict schema validation for entities and relations
@@ -880,3 +881,150 @@ async def get_friends(
         raise HTTPException(status_code=500, detail=str(e))
 
 # Run with: uvicorn main:app --reload
+
+## Custom GraphStore Implementation
+
+The `BaseGraphContext` uses `InMemoryGraphStore` by default, but you can implement and use your own `GraphStore` implementation. There are two ways to use a custom store:
+
+### 1. Registration-based (Programmatic Use)
+
+Use this pattern when you want to programmatically register and use a custom store:
+
+```python
+from graph_context.interfaces.store import GraphStore
+from graph_context.types.type_base import Entity, Relation
+from typing import Any, Optional, List
+
+class CustomGraphStore(GraphStore):
+    """Custom graph store implementation."""
+
+    def __init__(self, config: dict[str, Any]) -> None:
+        """Initialize the store with configuration."""
+        self.config = config
+        # Your initialization code here
+
+    # ... implement all required methods ...
+
+# Register the store type
+from graph_context.store import GraphStoreFactory
+GraphStoreFactory.register_store_type("custom", CustomGraphStore)
+
+# Create context (will use registered store)
+context = BaseGraphContext()
+
+# Use the context
+await context.create_entity("Person", {"name": "Alice"})
+```
+
+### 2. Configuration-based (Deployment)
+
+Use this pattern when you want to configure the store through environment variables or configuration files:
+
+```python
+# 1. Create your store implementation
+class CustomGraphStore(GraphStore):
+    """Custom graph store implementation."""
+
+    def __init__(self, config: dict[str, Any]) -> None:
+        """Initialize the store with configuration."""
+        self.config = config
+        # Your initialization code here
+
+    # ... implement all required methods ...
+
+# 2. Configure the store using one of these methods:
+
+# a. Environment variable:
+export GRAPH_STORE_CONFIG='{"type": "my_package.stores.custom_store.CustomGraphStore", "config": {"your_config": "value"}}'
+
+# b. Configuration file (graph_store_config.json):
+{
+    "type": "my_package.stores.custom_store.CustomGraphStore",
+    "config": {
+        "your_config": "value"
+    }
+}
+
+# 3. Create context (will use configured store)
+context = BaseGraphContext()
+
+# 4. Use the context
+await context.create_entity("Person", {"name": "Alice"})
+```
+
+### Store Loading Process
+
+When you create a new `BaseGraphContext` instance, the following process occurs:
+
+1. `BaseGraphContext.__init__()` calls `GraphStoreFactory.create()`
+2. `GraphStoreFactory.create()` loads the configuration:
+   - First checks for `GRAPH_STORE_CONFIG` environment variable
+   - Then checks for `graph_store_config.json` file
+   - Falls back to memory store if no configuration is found
+3. The factory determines how to load the store:
+   - If the type is registered, uses the registered class
+   - If not registered, attempts to load the class dynamically from the configured type
+4. It instantiates the store with the provided configuration
+5. The store instance is used by the context
+
+### Example: Complete Setup with Both Patterns
+
+```python
+# 1. Create your store implementation
+class CustomGraphStore(GraphStore):
+    def __init__(self, config: dict[str, Any]) -> None:
+        self.config = config
+        # Your initialization code here
+
+    # ... implement all required methods ...
+
+# 2. Choose one of these approaches:
+
+# A. Registration-based (for programmatic use)
+GraphStoreFactory.register_store_type("custom", CustomGraphStore)
+context = BaseGraphContext()
+
+# OR
+
+# B. Configuration-based (for deployment)
+# Set configuration via environment variable
+import os
+os.environ["GRAPH_STORE_CONFIG"] = json.dumps({
+    "type": "my_package.stores.custom_store.CustomGraphStore",
+    "config": {
+        "connection_string": "your_connection_string",
+        "options": {
+            "pool_size": 10,
+            "timeout": 30
+        }
+    }
+})
+context = BaseGraphContext()
+
+# 3. Use the context
+await context.create_entity("Person", {"name": "Alice"})
+```
+
+The `GraphStore` interface requires implementing these key methods:
+- `create_entity`: Create a new entity
+- `get_entity`: Retrieve an entity by ID
+- `update_entity`: Update an existing entity
+- `delete_entity`: Delete an entity
+- `create_relation`: Create a new relation
+- `get_relation`: Retrieve a relation by ID
+- `update_relation`: Update an existing relation
+- `delete_relation`: Delete a relation
+- `query`: Execute a query against the graph
+- `traverse`: Traverse the graph from a starting entity
+- `begin_transaction`: Start a new transaction
+- `commit_transaction`: Commit the current transaction
+- `rollback_transaction`: Roll back the current transaction
+
+Your custom store implementation should handle:
+- Data persistence
+- Transaction management
+- Query execution
+- Graph traversal
+- Error handling
+- Connection management
+- Resource cleanup
