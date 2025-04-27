@@ -1,9 +1,9 @@
 """
 Tests for the SchemaValidator class.
 """
+
 import pytest
 
-from graph_context.context_base import SchemaValidator
 from graph_context.exceptions import SchemaError, ValidationError
 from graph_context.types.type_base import (
     EntityType,
@@ -11,6 +11,7 @@ from graph_context.types.type_base import (
     PropertyType,
     RelationType,
 )
+from graph_context.validation import SchemaValidator
 
 
 @pytest.fixture
@@ -53,7 +54,12 @@ def relation_types(entity_types):
                 "is_primary_author": PropertyDefinition(type=PropertyType.BOOLEAN, required=False, default=True),
             },
         ),
-        "likes": RelationType(name="likes", from_types=["person"], to_types=["document", "person"], properties={}),
+        "likes": RelationType(
+            name="likes",
+            from_types=["person"],
+            to_types=["document", "person"],
+            properties={},
+        ),
     }
 
 

@@ -1,13 +1,14 @@
 """
 Tests for the TransactionManager class.
 """
+
 from unittest.mock import AsyncMock
 
 import pytest
 
-from graph_context.context_base import TransactionManager
 from graph_context.event_system import GraphEvent
 from graph_context.exceptions import TransactionError
+from graph_context.manager import TransactionManager
 
 
 @pytest.fixture

@@ -1,12 +1,13 @@
 """
 Tests for the QueryManager class.
 """
+
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from graph_context.context_base import QueryManager
 from graph_context.event_system import GraphEvent
+from graph_context.manager import QueryManager
 from graph_context.types.type_base import Entity, QuerySpec, TraversalSpec
 
 
@@ -71,6 +72,8 @@ class TestQueryManager:
 
         mock_store.traverse.assert_called_once_with(start_entity, traversal_spec)
         mock_events.emit.assert_called_once_with(
-            GraphEvent.TRAVERSAL_EXECUTED, start_entity=start_entity, traversal_spec=traversal_spec
+            GraphEvent.TRAVERSAL_EXECUTED,
+            start_entity=start_entity,
+            traversal_spec=traversal_spec,
         )
         assert result == sample_entities

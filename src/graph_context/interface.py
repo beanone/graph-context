@@ -4,6 +4,7 @@ Core interface for the graph-context module.
 This module defines the abstract base class that all graph context implementations
 must inherit from, providing a consistent interface for graph operations.
 """
+
 from abc import ABC, abstractmethod
 from typing import Any, TypeVar
 
@@ -31,7 +32,7 @@ class GraphContext(ABC):
         pass
 
     @abstractmethod
-    async def create_entity(self, entity_type: str, properties: dict[str, Any]) -> Entity:
+    async def create_entity(self, entity_type: str, properties: dict[str, Any]) -> str:
         """
         Create a new entity in the graph.
 
@@ -40,7 +41,7 @@ class GraphContext(ABC):
             properties: Dictionary of property values
 
         Returns:
-            The created entity
+            The ID of the created entity
 
         Raises:
             ValidationError: If property validation fails
@@ -66,7 +67,7 @@ class GraphContext(ABC):
         pass
 
     @abstractmethod
-    async def update_entity(self, entity_id: str, properties: dict[str, Any]) -> Entity | None:
+    async def update_entity(self, entity_id: str, properties: dict[str, Any]) -> bool:
         """
         Update an existing entity.
 
@@ -75,7 +76,7 @@ class GraphContext(ABC):
             properties: Dictionary of property values to update
 
         Returns:
-            The updated entity if successful, None if the entity was not found
+            True if the update was successful, False otherwise
 
         Raises:
             ValidationError: If property validation fails
@@ -102,7 +103,11 @@ class GraphContext(ABC):
 
     @abstractmethod
     async def create_relation(
-        self, relation_type: str, from_entity: str, to_entity: str, properties: dict[str, Any] | None = None
+        self,
+        relation_type: str,
+        from_entity: str,
+        to_entity: str,
+        properties: dict[str, Any] | None = None,
     ) -> Relation:
         """
         Create a new relation between entities.
