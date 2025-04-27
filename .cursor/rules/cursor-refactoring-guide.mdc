@@ -1,0 +1,415 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# cursor-refactoring-guide
+
+A comprehensive guide for refactoring Python code to achieve specific, user-defined goals, such as improving readability, maintainability, modularity, testability, or performance, while strictly adhering to the intended scope. Aligned with `cursor-rules` and `cursor-architecture-rules`, this guide supports projects using FastAPI, pytest, Poetry, and ML/AI frameworks, addressing issues like "spaghetti code" with excessive `if/else` statements as part of focused, goal-driven refactoring. Goals are defined by the user, and the LLM (e.g., Cursor IDE) must follow these without introducing unsolicited changes.
+
+## Introduction
+
+Refactoring is the process of improving code structure without altering its external behavior, driven by specific goals set by the user (e.g., simplifying logic, enhancing testability, or optimizing performance). This guide ensures refactoring adheres to user-specified goals, avoiding out-of-scope modifications that could introduce complexity or deviate from intent. It aligns with PEP 8, SOLID principles, Google-style docstrings, and a 90%+ test coverage target, tailored to your tech stack and ML/AI workflows.
+
+**Key Objectives**:
+- Achieve user-defined improvements (e.g., reduce `if/else` nesting, modularize code).
+- Maintain strict scope discipline to prevent unnecessary or unsolicited changes.
+- Ensure refactored code is clear, maintainable, testable, and efficient.
+
+## Preparation
+
+Prepare the codebase to ensure refactoring aligns with the user’s specific goal, with the LLM following user instructions:
+
+1. **Specify User-Defined Refactoring Goals**:
+   - The user must clearly specify the objective (e.g., "Simplify control flow in `src/services/processor.py`", "Increase test coverage in `src/models/`").
+   - Document goals in `README.md` or `docs/refactoring.md` with measurable criteria (e.g., "Reduce function length to <50 lines").
+   - The LLM must not define goals; it follows the user’s explicit instructions.
+   - Explicitly limit scope to avoid unrelated changes (e.g., "Only refactor `processor.py`, defer other modules").
+
+2. **Assess the Codebase**:
+   - Target code relevant to the user’s goal (e.g., functions with >2 levels of `if/else` nesting, modules with <90% test coverage).
+   - Use Ruff to identify issues tied to the goal (e.g., PEP 8 violations, unused code).
+   - Analyze dependencies with `pydeps` only if the goal involves decoupling.
+
+3. **Verify Test Coverage**:
+   - Run `pytest --cov --cov-report=html` to ensure 90%+ coverage for affected code.
+   - Add tests for untested areas relevant to the goal, using Arrange-Act-Assert and mocking external dependencies.
+
+4. **Set Up Version Control**:
+   - Commit changes: `git commit -m "Pre-refactoring baseline for [goal]"`.
+   - Create a branch: `git checkout -b refactor/[goal-short-name]` (e.g., `refactor/simplify-processor`).
+
+5. **Configure Environment**:
+   - Activate virtual environment: `source .venv/bin/activate && poetry install`.
+   - Verify Ruff: `ruff check .`.
+
+6. **Scope Control**:
+   - Restrict changes to code directly related to the user’s goal.
+   - If unrelated issues are found, note them for future refactoring but do not address them now.
+
+## General Refactoring Principles
+
+Adhere to these principles to ensure refactoring achieves the user-specified goal while maintaining discipline:
+
+- **Follow User’s Goal**: Implement changes that directly address the user-defined objective; avoid scope creep or unrelated improvements.
+- **Stay Within Scope**: Only modify code relevant to the goal, preventing unsolicited changes like those from Cursor IDE.
+- **Incremental Changes**: Refactor in small, testable steps, committing after each to minimize risk.
+- **Preserve Behavior**: Use tests to ensure refactored code maintains original functionality.
+- **Align with Standards**: Follow `.cursor-rules` (e.g., PEP 8, type annotations, Google-style docstrings).
+- **Enhance Quality**: Target improvements in readability, modularity, testability, or performance, as specified by the user’s goal.
+- **Simplify Complexity**: Reduce technical debt, including conditional complexity, while keeping changes relevant.
+
+## Specific Refactoring Techniques
+
+These techniques address common refactoring goals, applied only when relevant to the user’s specific objective. Each includes a stated goal to demonstrate focus.
+
+### 1. Eliminate Code Duplication
+
+**Goal**: Remove duplicated logic in `src/services/` to improve maintainability.
+
+**Technique** (Apply only if duplication is the user’s target):
+- Extract common code into reusable functions or utilities.
+- Parameterize variations to avoid repetition.
+```python
+# Before (src/services/user.py, src/services/order.py)
+def process_user(data: dict) -> dict:
+    cleaned = {k: v.strip() for k, v in data.items() if isinstance(v, str)}
+    validated = all(len(v) > 0 for v in cleaned.values())
+    return {"valid": validated, "data": cleaned}
+
+def process_order(data: dict) -> dict:
+    cleaned = {k: v.strip() for k, v in data.items() if isinstance(v, str)}
+    validated = all(len(v) > 0 for v in cleaned.values())
+    return {"valid": validated, "data": cleaned}
+
+# After (src/services/utils.py, src/services/user.py, src/services/order.py)
+# src/services/utils.py
+def clean_and_validate(data: dict) -> dict:
+    """Clean and validate string data."""
+    cleaned = {k: v.strip() for k, v in data.items() if isinstance(v, str)}
+    validated = all(len(v) > 0 for v in cleaned.values())
+    return {"valid": validated, "data": cleaned}
+
+# src/services/user.py
+def process_user(data: dict) -> dict:
+    """Process user data."""
+    return clean_and_validate(data)
+
+# src/services/order.py
+def process_order(data: dict) -> dict:
+    """Process order data."""
+    return clean_and_validate(data)
+```
+
+### 2. Simplify Conditional Logic
+
+**Goal**: Reduce `if/else` nesting in `src/api/endpoints.py` to improve readability.
+
+**Techniques** (Apply only if simplifying conditionals is the user’s target):
+- **Early Returns**: Handle edge cases early.
+```python
+# Before (src/api/endpoints.py)
+def get_user_role(user: dict) -> str:
+    if user is not None:
+        if "role" in user:
+            return user["role"]
+        else:
+            return "guest"
+    return "anonymous"
+
+# After
+def get_user_role(user: dict | None) -> str:
+    """Get user role, defaulting to guest or anonymous."""
+    if not user:
+        return "anonymous"
+    return user.get("role", "guest")
+```
+
+- **Dictionary Dispatch**: Replace `if/else` with a dispatch table.
+```python
+# Before (src/api/endpoints.py)
+def execute_command(cmd: str, data: dict) -> str:
+    if cmd == "save":
+        return save_data(data)
+    elif cmd == "delete":
+        return delete_data(data)
+    raise ValueError("Invalid command")
+
+# After
+from typing import Callable, Dict
+def execute_command(cmd: str, data: dict) -> str:
+    """Execute command by dispatching to handler."""
+    handlers: Dict[str, Callable[[dict], str]] = {
+        "save": save_data,
+        "delete": delete_data
+    }
+    handler = handlers.get(cmd)
+    if not handler:
+        raise ValueError(f"Invalid command: {cmd}")
+    return handler(data)
+```
+
+- **Polymorphism**: Use classes for type-based logic.
+```python
+# Before (src/models/predict.py)
+def process_model(model_type: str, data: dict) -> float:
+    if model_type == "linear":
+        return LinearModel().predict(data)
+    elif model_type == "neural":
+        return NeuralModel().predict(data)
+    raise ValueError("Unknown model")
+
+# After
+from abc import ABC, abstractmethod
+class Model(ABC):
+    @abstractmethod
+    def predict(self, data: dict) -> float:
+        pass
+
+class LinearModel(Model):
+    def predict(self, data: dict) -> float:
+        # Implementation
+        return 0.0
+
+class NeuralModel(Model):
+    def predict(self, data: dict) -> float:
+        # Implementation
+        return 0.0
+
+def process_model(model: Model, data: dict) -> float:
+    """Process data with the given model."""
+    return model.predict(data)
+```
+
+### 3. Break Down Large Functions
+
+**Goal**: Shorten functions in `src/services/processor.py` to <50 lines for maintainability.
+
+**Technique** (Apply only if function length is the user’s target):
+- Split into smaller, single-responsibility functions.
+```python
+# Before (src/services/processor.py)
+def handle_request(request: dict) -> dict:
+    # 70 lines: validate, process, save
+    if request.get("type") == "order":
+        # Process order
+        return {"status": "success"}
+    return {"status": "error"}
+
+# After
+def validate_request(request: dict) -> bool:
+    """Validate request data."""
+    return bool(request.get("type"))
+
+def process_order(request: dict) -> dict:
+    """Process order-specific logic."""
+    # 20 lines
+    return {"status": "success"}
+
+def handle_request(request: dict) -> dict:
+    """Handle incoming request."""
+    if not validate_request(request):
+        return {"status": "error"}
+    if request["type"] == "order":
+        return process_order(request)
+    return {"status": "error"}
+```
+
+### 4. Modularize Classes
+
+**Goal**: Reduce class size in `src/pipeline.py` to <10 methods for single responsibility.
+
+**Technique** (Apply only if class size is the user’s target):
+- Extract methods into separate classes, using composition.
+```python
+# Before (src/pipeline.py)
+class Pipeline:
+    def load_data(self): ...
+    def clean_data(self): ...
+    def train_model(self): ...
+    def evaluate_model(self): ...
+    # 12 methods
+
+# After
+class DataLoader:
+    """Load and validate data."""
+    def load(self) -> list: ...
+    def validate(self, data: list) -> bool: ...
+
+class DataCleaner:
+    """Clean data for processing."""
+    def clean(self, data: list) -> list: ...
+
+class ModelTrainer:
+    """Train and evaluate models."""
+    def train(self, data: list) -> Model: ...
+    def evaluate(self, model: Model, data: list) -> float: ...
+
+class Pipeline:
+    """Orchestrate data processing and model training."""
+    def __init__(self):
+        self.loader = DataLoader()
+        self.cleaner = DataCleaner()
+        self.trainer = ModelTrainer()
+
+    def run(self, source: str) -> float:
+        data = self.loader.load(source)
+        if self.loader.validate(data):
+            cleaned = self.cleaner.clean(data)
+            model = self.trainer.train(cleaned)
+            return self.trainer.evaluate(model, cleaned)
+        return 0.0
+```
+
+### 5. Improve Naming and Documentation
+
+**Goal**: Enhance clarity in `src/utils/` with better names and docstrings.
+
+**Technique** (Apply only if readability is the user’s target):
+- Use descriptive names and comprehensive Google-style docstrings.
+```python
+# Before (src/utils/math.py)
+def calc(x: list) -> float:
+    return sum(x) / len(x)
+
+# After
+def calculate_average(numbers: list[float]) -> float:
+    """Calculate the average of a list of numbers.
+
+    Args:
+        numbers: List of numbers to average.
+
+    Returns:
+        The arithmetic mean.
+
+    Raises:
+        ZeroDivisionError: If the input list is empty.
+
+    Example:
+        >>> calculate_average([1, 2, 3])
+        2.0
+    """
+    return sum(numbers) / len(numbers)
+```
+
+### 6. Enhance Dependency Management
+
+**Goal**: Decouple dependencies in `src/api/` for testability.
+
+**Technique** (Apply only if coupling is the user’s target):
+- Use dependency injection with explicit parameters or FastAPI’s `Depends`.
+```python
+# Before (src/api/endpoints.py)
+GLOBAL_DB = Database()
+
+def fetch_user(user_id: int) -> dict:
+    return GLOBAL_DB.query(f"SELECT * FROM users WHERE id = {user_id}")
+
+# After
+from fastapi import Depends
+class Database:
+    def query(self, sql: str) -> dict: ...
+
+def get_db() -> Database:
+    return Database()
+
+def fetch_user(user_id: int, db: Database = Depends(get_db)) -> dict:
+    """Fetch user data from database."""
+    return db.query(f"SELECT * FROM users WHERE id = {user_id}")
+```
+
+### 7. Optimize Performance
+
+**Goal**: Improve efficiency in `src/models/` for faster inference.
+
+**Technique** (Apply only if performance is the user’s target):
+- Use caching and efficient data structures.
+```python
+# Before (src/models/inference.py)
+def compute_scores(data: list) -> list:
+    return [expensive_calc(x) for x in data]
+
+# After
+from functools import lru_cache
+@lru_cache(maxsize=1000)
+def expensive_calc(x: float) -> float:
+    # Complex computation
+    return x * 2
+
+def compute_scores(data: list) -> list:
+    """Compute scores with caching."""
+    return [expensive_calc(x) for x in data]
+```
+
+### 8. Refactor ML/AI Code
+
+**Goal**: Streamline experiment logic in `src/experiments/` for reproducibility.
+
+**Technique** (Apply only if ML/AI reproducibility is the user’s target):
+- Use configuration-driven workflows with `hydra` or YAML.
+```python
+# Before (src/experiments/run.py)
+def run_experiment(model_type: str, data: list) -> float:
+    if model_type == "linear":
+        model = LinearModel()
+        # Train and evaluate
+    elif model_type == "neural":
+        model = NeuralModel()
+        # Train and evaluate
+    return evaluate(model, data)
+
+# After
+from hydra.utils import instantiate
+import yaml
+def load_config(config_path: str) -> dict:
+    """Load experiment configuration."""
+    with open(config_path, "r") as f:
+        return yaml.safe_load(f)
+
+def run_experiment(config_path: str, data: list) -> float:
+    """Run experiment with configured model."""
+    config = load_config(config_path)
+    model = instantiate(config["model"])
+    return evaluate(model, data)
+# config.yaml
+# model:
+#   _target_: src.models.LinearModel
+#   params:
+#     learning_rate: 0.01
+```
+
+## Validation and Testing
+
+Validate refactored code to ensure it achieves the user-specified goal and meets quality standards:
+
+1. **Run Tests**:
+   - Execute `pytest --cov --cov-report=html` to confirm tests pass and coverage remains 90%+.
+   - Add tests only for areas related to the goal (e.g., new functions).
+
+2. **Lint and Format**:
+   - Run `ruff check .` and `ruff format .` to enforce PEP 8.
+
+3. **Verify Behavior**:
+   - Test FastAPI endpoints via `/docs` or manual requests for API-related goals.
+   - Compare ML/AI model outputs before and after for experiment-related goals.
+
+4. **Check Performance**:
+   - Use `cProfile` or `psutil` to ensure no regressions for performance-focused goals.
+   - Verify memory usage for ML/AI code.
+
+5. **Update Documentation**:
+   - Revise Google-style docstrings for modified code.
+   - Update `docs/` or FastAPI OpenAPI spec if relevant.
+   - Document changes in `README.md` for significant architectural shifts.
+
+## Best Practices
+
+- **Follow User-Defined Goals**: Adhere strictly to the user’s specified objective (e.g., "Reduce `if/else` nesting in `endpoints.py`") to guide all changes; the LLM must not set goals.
+- **Stay In Scope**: Limit refactoring to the user’s goal; defer unrelated improvements to avoid unsolicited changes.
+- **Commit Incrementally**: Use `git commit` after each step (e.g., `git commit -m "Simplify get_user_role with early returns"`).
+- **Preserve Functionality**: Ensure behavior remains unchanged unless the goal requires it.
+- **Document Trade-Offs**: Note decisions in comments (e.g., "Used dict dispatch for clarity, minor memory cost").
+- **Review Cursor Suggestions**: Ensure Cursor’s proposals align with the user’s goal and avoid adding unnecessary `if/else`.
+- **Use Tests as Guardrails**: Rely on `pytest` to catch regressions.
+- **Balance Simplicity and Modularity**: Avoid over-modularization; keep code intuitive.
+- **Maintain Standards**: Adhere to `.cursor-rules` (e.g., type annotations, single responsibility) and `.cursor-architecture-rules` (e.g., SOLID principles).
