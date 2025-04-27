@@ -98,7 +98,13 @@ def test_relation_type():
 def test_entity():
     """Test Entity model."""
     now = datetime.now(UTC)
-    entity = Entity(id="123", type="Person", properties={"name": "Alice", "age": 30}, created_at=now, updated_at=now)
+    entity = Entity(
+        id="123",
+        type="Person",
+        properties={"name": "Alice", "age": 30},
+        created_at=now,
+        updated_at=now,
+    )
 
     assert entity.id == "123"
     assert entity.type == "Person"
@@ -149,7 +155,9 @@ def test_query_operator():
 
 def test_query_condition():
     """Test QueryCondition model."""
-    condition = QueryCondition(field="age", operator=QueryOperator.GREATER_THAN, value=18)
+    condition = QueryCondition(
+        field="age", operator=QueryOperator.GREATER_THAN, value=18
+    )
 
     assert condition.field == "age"
     assert condition.operator == QueryOperator.GREATER_THAN
@@ -160,7 +168,9 @@ def test_query_spec():
     """Test QuerySpec model."""
     spec = QuerySpec(
         entity_type="Person",
-        conditions=[QueryCondition(field="age", operator=QueryOperator.GREATER_THAN, value=18)],
+        conditions=[
+            QueryCondition(field="age", operator=QueryOperator.GREATER_THAN, value=18)
+        ],
         limit=10,
         offset=0,
     )
@@ -185,7 +195,9 @@ def test_traversal_spec():
         max_depth=3,
         relation_types=["KNOWS", "WORKS_WITH"],
         direction=TraversalDirection.OUTBOUND,
-        conditions=[QueryCondition(field="active", operator=QueryOperator.EQUALS, value=True)],
+        conditions=[
+            QueryCondition(field="active", operator=QueryOperator.EQUALS, value=True)
+        ],
     )
 
     assert spec.max_depth == 3

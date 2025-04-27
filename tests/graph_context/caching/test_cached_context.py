@@ -300,9 +300,7 @@ async def test_error_handling(cached_context, transaction):
 
     # Test relation not found
     relation_id = "nonexistent"
-    cached_context._cache_manager.store_manager.get_relation_store().get.return_value = (
-        None
-    )
+    cached_context._cache_manager.store_manager.get_relation_store().get.return_value = None
 
     with pytest.raises(RelationNotFoundError):
         await cached_context.get_relation(relation_id)
@@ -441,7 +439,8 @@ async def test_single_entity_operations(cached_context):
     entity_ids = []
     for i in range(3):
         entity_id = await cached_context.create_entity(
-            "person", {"name": f"Person {i}"}  # Ensure name is provided
+            "person",
+            {"name": f"Person {i}"},  # Ensure name is provided
         )
         entity_ids.append(entity_id)
 

@@ -4,9 +4,8 @@ This module provides the core caching functionality for the graph context,
 including the cache entry model and storage interface.
 """
 
-from collections import defaultdict
 from datetime import UTC, datetime
-from typing import AsyncIterator, Dict, Generic, Optional, Set, Tuple, TypeVar
+from typing import AsyncIterator, Generic, Optional, Set, Tuple, TypeVar
 from uuid import uuid4
 
 from cachetools import TTLCache
@@ -40,7 +39,10 @@ class CacheEntry(BaseModel, Generic[T]):
 
 
 class CacheStore:
-    """Cache store implementation with type awareness and TTL support."""
+    """Cache store implementation with TTL support.
+
+    A simple read-only cache that stores computed results with optional TTL.
+    """
 
     def __init__(
         self,
@@ -54,11 +56,6 @@ class CacheStore:
             ttl: Time-to-live in seconds for cache entries (None for no TTL)
         """
         self._cache = TTLCache(maxsize=maxsize, ttl=ttl) if ttl else {}
-        self._type_dependencies: Dict[str, Set[str]] = defaultdict(set)
-        self._query_dependencies: Dict[str, Set[str]] = defaultdict(set)
-        self._reverse_dependencies: Dict[str, Set[str]] = defaultdict(set)
-        self._entity_relations: Dict[str, Set[str]] = defaultdict(set)
-        self._relation_entities: Dict[str, Set[str]] = defaultdict(set)
 
     async def get(self, key: str) -> Optional[CacheEntry]:
         """Retrieve a cache entry by key.
@@ -74,49 +71,14 @@ class CacheStore:
         except KeyError:
             return None
 
-    async def set(  # noqa: C901
-        self, key: str, entry: CacheEntry, dependencies: Optional[Set[str]] = None
-    ) -> None:
+    async def set(self, key: str, entry: CacheEntry) -> None:
         """Store a cache entry.
 
         Args:
             key: The cache key
             entry: The entry to store
-            dependencies: Optional set of keys this entry depends on
         """
         self._cache[key] = entry
-
-        # Track type dependencies
-        if entry.entity_type:
-            self._type_dependencies[entry.entity_type].add(key)
-        if entry.relation_type:
-            self._type_dependencies[entry.relation_type].add(key)
-
-        # For queries and traversals, track dependencies on affected types
-        if dependencies and (key.startswith("query:") or key.startswith("traversal:")):
-            for type_name in dependencies:
-                self._type_dependencies[type_name].add(key)
-
-        # Track query dependencies
-        if entry.query_hash:
-            self._query_dependencies[entry.query_hash].add(key)
-
-        # Track reverse dependencies
-        if dependencies:
-            for dep in dependencies:
-                self._reverse_dependencies[dep].add(key)
-
-        # Track entity-relation dependencies
-        if key.startswith("relation:"):
-            # Extract entity IDs from relation value if available
-            if hasattr(entry.value, "from_entity"):
-                from_entity = entry.value.from_entity
-                self._entity_relations[from_entity].add(key)
-                self._relation_entities[key].add(from_entity)
-            if hasattr(entry.value, "to_entity"):
-                to_entity = entry.value.to_entity
-                self._entity_relations[to_entity].add(key)
-                self._relation_entities[key].add(to_entity)
 
     async def delete(self, key: str) -> None:
         """Delete a cache entry.
@@ -125,46 +87,13 @@ class CacheStore:
             key: The cache key to delete
         """
         try:
-            entry = self._cache.pop(key)
-
-            # Clean up type dependencies
-            if entry.entity_type:
-                self._type_dependencies[entry.entity_type].discard(key)
-            if entry.relation_type:
-                self._type_dependencies[entry.relation_type].discard(key)
-
-            # Clean up query dependencies
-            if entry.query_hash:
-                self._query_dependencies[entry.query_hash].discard(key)
-
-            # Clean up reverse dependencies
-            for dep_key in self._reverse_dependencies:
-                self._reverse_dependencies[dep_key].discard(key)
-
-            # Clean up entity-relation dependencies
-            if key.startswith("relation:"):
-                for entity_id in self._relation_entities.get(key, set()):
-                    self._entity_relations[entity_id].discard(key)
-                self._relation_entities.pop(key, None)
-            elif key.startswith("entity:"):
-                # When deleting an entity, also delete its relations
-                for relation_key in self._entity_relations.get(key, set()):
-                    await self.delete(relation_key)
-                self._entity_relations.pop(key, None)
-
+            self._cache.pop(key)
         except KeyError:
             pass
 
-    async def delete_many(self, keys: Set[str]) -> None:
-        """Delete multiple cache entries efficiently.
-
-        Args:
-            keys: Set of cache keys to delete
-        """
-        # Create a copy of the keys to avoid mutation during iteration
-        keys_to_delete = set(keys)
-        for key in keys_to_delete:
-            await self.delete(key)
+    async def clear(self) -> None:
+        """Clear all cache entries."""
+        self._cache.clear()
 
     async def scan(self) -> AsyncIterator[Tuple[str, CacheEntry]]:
         """Iterate over all cache entries.
@@ -174,121 +103,6 @@ class CacheStore:
         """
         for key, entry in self._cache.items():
             yield key, entry
-
-    async def clear(self) -> None:
-        """Clear all cache entries."""
-        self._cache.clear()
-        self._type_dependencies.clear()
-        self._query_dependencies.clear()
-        self._reverse_dependencies.clear()
-        self._entity_relations.clear()
-        self._relation_entities.clear()
-
-    async def invalidate_type(self, type_name: str) -> None:  # noqa: C901
-        """Invalidate all cache entries for a type.
-
-        Args:
-            type_name: The type name to invalidate
-        """
-        # Get all keys to invalidate
-        keys = self._type_dependencies.get(type_name, set())
-        if not keys:
-            return
-
-        # Create a copy of the keys to avoid mutation during iteration
-        keys_to_delete = set(keys)
-
-        # Delete all affected entries
-        for key in keys_to_delete:
-            try:
-                # Get the entry before deleting it
-                entry = self._cache[key]
-
-                # Delete from main cache
-                del self._cache[key]
-
-                # Clean up query dependencies
-                if entry.query_hash:
-                    self._query_dependencies[entry.query_hash].discard(key)
-
-                # Clean up reverse dependencies
-                for dep_key in self._reverse_dependencies:
-                    self._reverse_dependencies[dep_key].discard(key)
-
-                # Clean up entity-relation dependencies
-                if key.startswith("relation:"):
-                    for entity_id in self._relation_entities.get(key, set()):
-                        self._entity_relations[entity_id].discard(key)
-                    self._relation_entities.pop(key, None)
-                elif key.startswith("entity:"):
-                    # When deleting an entity, also delete its relations
-                    for relation_key in self._entity_relations.get(key, set()):
-                        await self.delete(relation_key)
-                    self._entity_relations.pop(key, None)
-
-                # For query or traversal entry, invalidate any entries that depend on it
-                if key.startswith(("query:", "traversal:")):
-                    await self.invalidate_dependencies(key)
-
-            except KeyError:
-                pass
-
-        # Clear the type dependencies
-        self._type_dependencies[type_name].clear()
-
-    async def invalidate_query(self, query_hash: str) -> None:
-        """Invalidate all cache entries for a query.
-
-        Args:
-            query_hash: The query hash to invalidate
-        """
-        keys = self._query_dependencies.get(query_hash, set())
-        await self.delete_many(keys)
-        self._query_dependencies[query_hash].clear()
-
-    async def invalidate_dependencies(self, key: str) -> None:
-        """Invalidate all cache entries that depend on a key.
-
-        This includes:
-        1. Direct dependencies (entries that listed this key as a dependency)
-        2. Related entries (e.g. relations when invalidating an entity)
-        3. Queries that depend on the affected types
-
-        Args:
-            key: The key whose dependents should be invalidated
-        """
-        # Get all keys that need to be invalidated
-        keys_to_invalidate = set()
-
-        # Add direct dependencies
-        keys_to_invalidate.update(self._reverse_dependencies.get(key, set()))
-
-        # Add related entries
-        if key.startswith("entity:"):
-            # When invalidating an entity, also invalidate its relations
-            keys_to_invalidate.update(self._entity_relations.get(key, set()))
-        elif key.startswith("relation:"):
-            # When invalidating a relation, also invalidate related entity caches
-            for entity_id in self._relation_entities.get(key, set()):
-                keys_to_invalidate.update(self._reverse_dependencies.get(entity_id, set()))
-
-        # Add affected query results
-        entry = await self.get(key)
-        if entry:
-            if entry.entity_type:
-                keys_to_invalidate.update(self._type_dependencies.get(entry.entity_type, set()))
-            if entry.relation_type:
-                keys_to_invalidate.update(self._type_dependencies.get(entry.relation_type, set()))
-
-        # Delete all affected entries
-        await self.delete_many(keys_to_invalidate)
-
-        # Clean up dependency tracking
-        self._reverse_dependencies[key].clear()
-        if key.startswith("entity:"):
-            self._entity_relations.pop(key, None)
-        elif key.startswith("relation:"):
-            self._relation_entities.pop(key, None)
 
 
 class DisabledCacheStore(CacheStore):

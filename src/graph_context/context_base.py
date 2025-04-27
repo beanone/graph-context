@@ -42,8 +42,12 @@ class BaseGraphContext(GraphContext):
         self._events = EventSystem()
         self._validator = SchemaValidator(self._entity_types, self._relation_types)
         self._transaction = TransactionManager(self._store, self._events)
-        self._entity_manager = EntityManager(self._store, self._events, self._validator, self._transaction)
-        self._relation_manager = RelationManager(self._store, self._events, self._validator, self._transaction)
+        self._entity_manager = EntityManager(
+            self._store, self._events, self._validator, self._transaction
+        )
+        self._relation_manager = RelationManager(
+            self._store, self._events, self._validator, self._transaction
+        )
         self._query_manager = QueryManager(self._store, self._events)
 
     async def cleanup(self) -> None:
@@ -85,7 +89,9 @@ class BaseGraphContext(GraphContext):
             operation="register_entity_type",
             entity_type=entity_type.name,
         )
-        await self._events.emit(GraphEvent.TYPE_MODIFIED, entity_type=entity_type.name, operation="register")
+        await self._events.emit(
+            GraphEvent.TYPE_MODIFIED, entity_type=entity_type.name, operation="register"
+        )
 
     async def register_relation_type(self, relation_type: RelationType) -> None:
         """
@@ -133,7 +139,9 @@ class BaseGraphContext(GraphContext):
             operation="register",
         )
 
-    def validate_entity(self, entity_type: str, properties: dict[str, Any]) -> dict[str, Any]:
+    def validate_entity(
+        self, entity_type: str, properties: dict[str, Any]
+    ) -> dict[str, Any]:
         """
         Validate entity properties against the schema.
 
@@ -173,7 +181,9 @@ class BaseGraphContext(GraphContext):
             ValidationError: If properties do not match schema
             SchemaError: If relation type is not registered
         """
-        return self._validator.validate_relation(relation_type, from_entity_type, to_entity_type, properties)
+        return self._validator.validate_relation(
+            relation_type, from_entity_type, to_entity_type, properties
+        )
 
     async def begin_transaction(self) -> None:
         """Begin a new transaction."""
@@ -215,9 +225,13 @@ class BaseGraphContext(GraphContext):
         properties: dict[str, Any] | None = None,
     ) -> str:
         """Create a new relation."""
-        return await self._relation_manager.create(relation_type, from_entity, to_entity, properties)
+        return await self._relation_manager.create(
+            relation_type, from_entity, to_entity, properties
+        )
 
-    async def update_relation(self, relation_id: str, properties: dict[str, Any]) -> bool:
+    async def update_relation(
+        self, relation_id: str, properties: dict[str, Any]
+    ) -> bool:
         """Update an existing relation."""
         return await self._relation_manager.update(relation_id, properties)
 
@@ -229,6 +243,8 @@ class BaseGraphContext(GraphContext):
         """Execute a query against the graph."""
         return await self._query_manager.query(query_spec)
 
-    async def traverse(self, start_entity: str, traversal_spec: TraversalSpec) -> list[Entity]:
+    async def traverse(
+        self, start_entity: str, traversal_spec: TraversalSpec
+    ) -> list[Entity]:
         """Traverse the graph starting from a given entity."""
         return await self._query_manager.traverse(start_entity, traversal_spec)

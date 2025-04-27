@@ -32,7 +32,9 @@ class MockGraph(GraphLike):
         """Get all relations in the graph."""
         return self.relations
 
-    def add_entity(self, id: str, type: str, properties: Dict[str, Any] | None = None) -> None:
+    def add_entity(
+        self, id: str, type: str, properties: Dict[str, Any] | None = None
+    ) -> None:
         """Helper to add an entity to the mock graph."""
         self.entities[id] = Entity(
             id=id,
@@ -189,7 +191,9 @@ async def test_simple_traversal(simple_graph):
     assert len(results) == 0
 
     # Test with specific relation type
-    results = await traverse(simple_graph, "A", {"direction": "outbound", "relation_types": ["parent"]})
+    results = await traverse(
+        simple_graph, "A", {"direction": "outbound", "relation_types": ["parent"]}
+    )
     assert len(results) == 2
     assert {r.id for r in results} == {"B", "D"}
 
@@ -219,7 +223,9 @@ async def test_path_tracking(simple_graph):
 async def test_max_depth(simple_graph):
     """Test depth limiting in traversal."""
     # Depth 1 should only find direct connections
-    results = await traverse(simple_graph, "A", {"direction": "outbound", "max_depth": 1})
+    results = await traverse(
+        simple_graph, "A", {"direction": "outbound", "max_depth": 1}
+    )
     assert len(results) == 2
     assert {r.id for r in results} == {"B", "D"}
 
@@ -310,12 +316,16 @@ async def test_relation_type_filtering(simple_graph):
     """Test filtering by relation type."""
     # From A, following only friend relations
     # Should find no direct friends
-    results = await traverse(simple_graph, "A", {"direction": "outbound", "relation_types": ["friend"]})
+    results = await traverse(
+        simple_graph, "A", {"direction": "outbound", "relation_types": ["friend"]}
+    )
     assert len(results) == 0
 
     # From A, following only parent relations
     # Should find direct children B and D
-    results = await traverse(simple_graph, "A", {"direction": "outbound", "relation_types": ["parent"]})
+    results = await traverse(
+        simple_graph, "A", {"direction": "outbound", "relation_types": ["parent"]}
+    )
     assert len(results) == 2
     assert {r.id for r in results} == {"B", "D"}
 
@@ -486,14 +496,14 @@ async def test_self_referential_relation(cyclic_graph):
     found_self_loop = False
     for path_result in results:
         for relation, _ in path_result.path:
-            if relation.id == "r_self" or (relation.from_entity == "C" and relation.to_entity == "C"):
+            if relation.id == "r_self" or (
+                relation.from_entity == "C" and relation.to_entity == "C"
+            ):
                 found_self_loop = True
                 break
         if found_self_loop:
             break
-    assert (
-        not found_self_loop
-    ), f"Self-referential relation C->C incorrectly included in path: {path_result.path if found_self_loop else ''}"
+    assert not found_self_loop, f"Self-referential relation C->C incorrectly included in path: {path_result.path if found_self_loop else ''}"
 
     # Verify expected paths (excluding cycles) are present
     paths_found = {"->".join(["A"] + [step[1].id for step in p.path]) for p in results}
@@ -604,7 +614,9 @@ async def test_dfs_multiple_skip_conditions():
     # 2. No cycles should be present in any path
     for result in results:
         path_nodes = {step[1].id for step in result.path}
-        assert len(path_nodes) == len(result.path), f"Cycle detected in path to {result.entity.id}"
+        assert len(path_nodes) == len(
+            result.path
+        ), f"Cycle detected in path to {result.entity.id}"
 
     # 3. All paths should be valid
     for result in results:
@@ -614,4 +626,6 @@ async def test_dfs_multiple_skip_conditions():
                 if i > 0:
                     prev_node = result.path[i - 1][1].id
                     curr_relation = result.path[i][0]
-                    assert curr_relation.from_entity == prev_node, f"Invalid path: {result.path}"
+                    assert (
+                        curr_relation.from_entity == prev_node
+                    ), f"Invalid path: {result.path}"

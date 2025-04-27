@@ -204,7 +204,9 @@ def test_validate_property_value():
     assert validate_property_value(123, prop_def) == 123
 
     # Test with constraints
-    prop_def = PropertyDefinition(type=PropertyType.STRING, constraints={"min_length": 3})
+    prop_def = PropertyDefinition(
+        type=PropertyType.STRING, constraints={"min_length": 3}
+    )
 
     assert validate_property_value("test", prop_def) == "test"
 
@@ -379,7 +381,9 @@ def test_validate_dict_extended():
     # Empty dictionary
     assert validate_dict({}) == {}
 
-    constraints = {"properties": {"required_prop": {"type": PropertyType.STRING, "required": True}}}
+    constraints = {
+        "properties": {"required_prop": {"type": PropertyType.STRING, "required": True}}
+    }
     with pytest.raises(ValidationError):
         validate_dict({}, constraints)
 
@@ -409,7 +413,9 @@ def test_validate_property_value_extended():
         validate_property_value(invalid_value, prop_def)
 
     # Default value with constraints
-    prop_def = PropertyDefinition(type=PropertyType.STRING, default="default", constraints={"min_length": 3})
+    prop_def = PropertyDefinition(
+        type=PropertyType.STRING, default="default", constraints={"min_length": 3}
+    )
 
     assert validate_property_value(None, prop_def) == "default"
 
@@ -508,12 +514,16 @@ def test_validate_property_value_edge_cases():
         validate_property_value(None, required_def)
 
     # Test None value with optional property and default
-    optional_def = PropertyDefinition(type=PropertyType.STRING, required=False, default="default_value")
+    optional_def = PropertyDefinition(
+        type=PropertyType.STRING, required=False, default="default_value"
+    )
     result = validate_property_value(None, optional_def)
     assert result == "default_value"
 
     # Test validation error propagation
-    list_def = PropertyDefinition(type=PropertyType.LIST, constraints={"item_type": PropertyType.INTEGER})
+    list_def = PropertyDefinition(
+        type=PropertyType.LIST, constraints={"item_type": PropertyType.INTEGER}
+    )
     with pytest.raises(ValidationError) as exc_info:
         validate_property_value(["not-an-int"], list_def)
     assert "Invalid item at index 0" in str(exc_info.value)
@@ -803,7 +813,9 @@ def test_validate_string_pattern_edge_cases():
 def test_validate_constraints_required_property():
     """Test _validate_constraints with missing required property."""
 
-    constraints = {"properties": {"name": {"type": PropertyType.STRING, "required": True}}}
+    constraints = {
+        "properties": {"name": {"type": PropertyType.STRING, "required": True}}
+    }
     value = {}
 
     with pytest.raises(ValidationError) as exc_info:
@@ -828,7 +840,11 @@ def test_validate_constraints_invalid_type():
 def test_validate_constraints_validation_error():
     """Test _validate_constraints propagating validation error from property validator."""
 
-    constraints = {"properties": {"age": {"type": PropertyType.INTEGER, "constraints": {"minimum": 0}}}}
+    constraints = {
+        "properties": {
+            "age": {"type": PropertyType.INTEGER, "constraints": {"minimum": 0}}
+        }
+    }
     value = {"age": -1}
 
     with pytest.raises(ValidationError) as exc_info:
