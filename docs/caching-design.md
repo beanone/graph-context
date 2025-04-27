@@ -11,41 +11,97 @@ The caching system for the Graph Context component is designed to be schema-awar
 ```mermaid
 classDiagram
     class GraphContext {
-        +cache_manager: SchemaAwareCacheManager
+        +event_system: EventSystem
         +get_entity()
         +update_entity()
         +query()
+        +traverse()
     }
 
-    class SchemaAwareCacheManager {
-        +cache: TypeAwareCache
-        +enabled: bool
-        -handlers: Dict
+    class CachedGraphContext {
+        -base_context: GraphContext
+        -cache_manager: CacheManager
+        +_initialize()
+    }
+
+    class CacheManager {
+        +config: CacheConfig
+        +store_manager: CacheStoreManager
+        +metrics: CacheMetrics
         +handle_event()
-        -handle_entity_read()
-        -handle_entity_write()
-        -handle_type_modified()
+        +enable()
+        +disable()
+        +clear()
+        -_subscribe_to_events()
+        -_hash_query()
+        -_handle_entity_read()
+        -_handle_entity_write()
+        -_handle_entity_delete()
+        -_handle_relation_read()
+        -_handle_relation_write()
+        -_handle_relation_delete()
+        -_handle_query_executed()
+        -_handle_traversal_executed()
+        -_handle_schema_modified()
     }
 
-    class TypeAwareCache {
-        -cache: Dict
-        -type_dependencies: Dict
-        -query_dependencies: Dict
+    class CacheStoreManager {
+        +entity_store: CacheStore
+        +relation_store: CacheStore
+        +query_store: CacheStore
+        +traversal_store: CacheStore
+        +get_entity_store()
+        +get_relation_store()
+        +get_query_store()
+        +get_traversal_store()
+        +clear_all()
+    }
+
+    class CacheStore {
+        -_cache: TTLCache | Dict
+        -_type_dependencies: Dict[str, Set[str]]
+        -_query_dependencies: Dict[str, Set[str]]
+        -_reverse_dependencies: Dict[str, Set[str]]
+        -_entity_relations: Dict[str, Set[str]]
+        -_relation_entities: Dict[str, Set[str]]
         +get()
         +set()
+        +delete()
+        +delete_many()
+        +scan()
+        +clear()
         +invalidate_type()
+        +invalidate_query()
+        +invalidate_dependencies()
     }
 
-    class GraphEvent {
-        <<enumeration>>
-        +ENTITY_READ
-        +ENTITY_UPDATED
-        +SCHEMA_TYPE_MODIFIED
+    class DisabledCacheStore {
+        +get()
+        +set()
+        +delete()
+        +delete_many()
+        +scan()
+        +clear()
     }
 
-    GraphContext --> SchemaAwareCacheManager : uses
-    SchemaAwareCacheManager --> TypeAwareCache : manages
-    SchemaAwareCacheManager --> GraphEvent : handles
+    class CacheEntry~T~ {
+        +value: T
+        +created_at: datetime
+        +entity_type: Optional[str]
+        +relation_type: Optional[str]
+        +operation_id: str
+        +query_hash: Optional[str]
+        +dependencies: Set[str]
+    }
+
+    GraphContext <|-- CachedGraphContext
+    CachedGraphContext --> CacheManager : uses
+    CacheManager --> CacheStoreManager : manages
+    CacheStoreManager --> CacheStore : creates
+    CacheStore <|-- DisabledCacheStore
+    CacheStore --> CacheEntry : stores
+    CacheManager --> EventSystem : subscribes to
+    EventSystem --> CacheManager : notifies
 ```
 
 ### Component Lifecycle Interactions
@@ -234,43 +290,68 @@ sequenceDiagram
 
 ### Dependency Tracking
 
-Note: The following diagram uses example entity types (Person, Address) and cache keys for illustration purposes only. In practice, the actual types and cache keys will depend on your specific graph schema and use cases.
+Note: The following diagram uses example entity types (Person, Address) and cache keys for illustration purposes only. The actual types and cache keys depend on your specific graph schema and use cases. The `CacheStore` implementation uses several internal dictionaries to track dependencies:
+
+- `_type_dependencies`: Maps type names (e.g., "Person") to a set of cache keys that depend on this type.
+- `_query_dependencies`: Maps query hashes to a set of cache keys representing the results of that query.
+- `_reverse_dependencies`: Maps a cache key to a set of other cache keys that depend on it (e.g., a query result key might depend on several entity keys).
+- `_entity_relations`: Maps an entity ID to a set of relation cache keys involving that entity.
+- `_relation_entities`: Maps a relation cache key to a set of entity IDs involved in that relation.
 
 ```mermaid
 graph TD
-    A[Person Type] --> B[Entity Cache Keys]
-    A --> C[Query Cache Keys]
+    subgraph "Dependency Maps in CacheStore"
+        A["_type_dependencies"] -->|Type -> Keys| B(Set of Cache Keys)
+        C["_query_dependencies"] -->|Query Hash -> Keys| B
+        D["_reverse_dependencies"] -->|Key -> Dependent Keys| B
+        E["_entity_relations"] -->|Entity ID -> Relation Keys| F(Set of Relation Keys)
+        G["_relation_entities"] -->|Relation Key -> Entity IDs| H(Set of Entity IDs)
+    end
 
-    B --> D[person:123]
-    B --> E[person:456]
+    subgraph "Example: Invalidation Flow"
+        direction LR
+        I[Update Entity 'person:123'] --> J{Invalidate 'person:123' Cache Entry}
+        J --> K[Lookup 'person:123' in _reverse_dependencies]
+        K --> L(Set of Dependent Keys e.g., 'query:abc', 'relation:xyz')
+        J --> M[Lookup 'person:123' in _entity_relations]
+        M --> N(Set of Related Relation Keys e.g., 'relation:789')
+        L --> O{Delete Dependent Keys}
+        N --> O
+    end
 
-    C --> F[query:age>25]
-    C --> G[query:name=*]
-
-    H[Address Type] --> I[Entity Cache Keys]
-    H --> J[Query Cache Keys]
-
-    I --> K[address:789]
-    J --> F
+    style A fill:#f9f,stroke:#333,stroke-width:2px
+    style C fill:#f9f,stroke:#333,stroke-width:2px
+    style D fill:#f9f,stroke:#333,stroke-width:2px
+    style E fill:#f9f,stroke:#333,stroke-width:2px
+    style G fill:#f9f,stroke:#333,stroke-width:2px
+    style B fill:#bbf,stroke:#333,stroke-width:2px
+    style F fill:#bbf,stroke:#333,stroke-width:2px
+    style H fill:#bbf,stroke:#333,stroke-width:2px
 ```
 
 ### Cache Key Structure
 
+Cache keys are structured strings to identify the operation and parameters:
+
+- **Entities:** `entity:<entity_id>` (e.g., `entity:person-123`)
+- **Relations:** `relation:<relation_id>` (e.g., `relation:knows-456`)
+- **Queries:** `query:<query_hash>` (e.g., `query:a1b2c3d4...`)
+- **Traversals:** `traversal:<traversal_hash>` (e.g., `traversal:e5f6g7h8...`)
+
+Query and traversal hashes are generated using `hashlib.sha256` on the JSON representation of the respective specification.
+
 ```mermaid
 graph LR
-    A[Cache Key] --> B[Operation]
-    A --> C[Type Info]
-    A --> D[Parameters]
+    A[Cache Key Structure] --> B[Operation Prefix]
+    A --> C[Identifier]
 
-    B --> E[get_entity]
-    B --> F[get_relation]
-    B --> G[query]
+    B --> D[entity:]
+    B --> E[relation:]
+    B --> F[query:]
+    B --> G[traversal:]
 
-    C --> H[type_name]
-    C --> I[type_hash]
-
-    D --> J[entity_id]
-    D --> K[query_hash]
+    C --> H[Entity/Relation ID]
+    C --> I[Query/Traversal Hash]
 ```
 
 ## Implementation Details
@@ -461,66 +542,88 @@ Cache Invalidation Triggers:
 
 ## Event Handling
 
-### 1. Operation Events
+The `CacheManager` subscribes to various `GraphEvent`s emitted by the base `GraphContext`'s `EventSystem`. The `handle_event` method routes these events to specific handlers:
 
-#### Read Operations
+-   **Read Events (`ENTITY_READ`, `RELATION_READ`, `QUERY_EXECUTED`, `TRAVERSAL_EXECUTED`)**: These events trigger attempts to populate the cache if the item wasn't already present (cache miss).
+-   **Write Events (`ENTITY_WRITE`, `RELATION_WRITE`, `ENTITY_BULK_WRITE`, `RELATION_BULK_WRITE`)**: These events trigger invalidation of the corresponding cache entries and potentially dependent entries (like queries).
+-   **Delete Events (`ENTITY_DELETE`, `RELATION_DELETE`, `ENTITY_BULK_DELETE`, `RELATION_BULK_DELETE`)**: Similar to write events, these trigger invalidation.
+-   **Schema Events (`SCHEMA_MODIFIED`, `TYPE_MODIFIED`)**: These events typically trigger broad cache invalidation, often clearing significant portions or all of the cache via `invalidate_type` or `clear`.
+
 ```python
-async def _handle_entity_read(context: EventContext):
-    if context.result:
-        await cache.set(
-            "get_entity",
-            context.result,
-            type_name=context.result.type,
-            entity_id=context.result.id
-        )
-```
+# Example CacheManager Event Handler Snippet (Conceptual)
 
-#### Write Operations
-```python
-async def _handle_entity_write(context: EventContext):
-    entity_type = context.metadata.get("entity_type")
-    if entity_type:
-        await cache.invalidate_type(entity_type)
-```
+class CacheManager:
+    # ... (init and other methods)
 
-### 2. Schema Events
+    async def handle_event(self, context: EventContext) -> None:
+        if not self.is_enabled():
+            return
 
-#### Type Modifications
-```python
-async def _handle_type_modified(context: EventContext):
-    type_name = context.metadata.get("type_name")
-    if type_name:
-        await cache.invalidate_type(type_name)
+        event_handlers = {
+            GraphEvent.ENTITY_READ: self._handle_entity_read,
+            GraphEvent.RELATION_READ: self._handle_relation_read,
+            GraphEvent.QUERY_EXECUTED: self._handle_query_executed,
+            GraphEvent.TRAVERSAL_EXECUTED: self._handle_traversal_executed,
+            # Write/Delete events often map to similar invalidation handlers
+            GraphEvent.ENTITY_WRITE: self._handle_entity_write, # Invalidate entity
+            GraphEvent.ENTITY_BULK_WRITE: self._handle_entity_write,
+            GraphEvent.ENTITY_DELETE: self._handle_entity_write,
+            GraphEvent.ENTITY_BULK_DELETE: self._handle_entity_write,
+            GraphEvent.RELATION_WRITE: self._handle_relation_write, # Invalidate relation
+            GraphEvent.RELATION_BULK_WRITE: self._handle_relation_write,
+            GraphEvent.RELATION_DELETE: self._handle_relation_write,
+            GraphEvent.RELATION_BULK_DELETE: self._handle_relation_write,
+            GraphEvent.SCHEMA_MODIFIED: self._handle_schema_modified, # Clear relevant caches
+            GraphEvent.TYPE_MODIFIED: self._handle_schema_modified,
+        }
+
+        handler = event_handlers.get(context.event)
+        if handler:
+            await handler(context)
+
+    async def _handle_entity_read(self, context: EventContext):
+        # Called *after* a successful read from the base context (cache miss)
+        entity = context.data.get("entity")
+        entity_id = context.data.get("entity_id")
+        if entity and entity_id:
+            entry = CacheEntry(value=entity, entity_type=entity.type)
+            store = self.store_manager.get_entity_store()
+            await store.set(entity_id, entry)
+
+    async def _handle_entity_write(self, context: EventContext):
+        # Handles write, bulk write, delete, bulk delete for entities
+        entity_id = context.data.get("entity_id")
+        if entity_id:
+            store = self.store_manager.get_entity_store()
+            # Invalidate the entity itself and any dependent entries
+            await store.invalidate_dependencies(entity_id)
+            await store.delete(entity_id)
+
+    async def _handle_schema_modified(self, context: EventContext):
+        # Broad invalidation for schema changes
+        affected_type = context.metadata.get("entity_type") or context.metadata.get("relation_type")
+        if affected_type:
+            await self.store_manager.entity_store.invalidate_type(affected_type)
+            await self.store_manager.relation_store.invalidate_type(affected_type)
+            # Potentially invalidate relevant queries/traversals too
+        else:
+            # If no specific type, clear everything as a safety measure
+            await self.clear()
+
+    # ... other handlers ...
 ```
 
 ## Cache Invalidation
 
-### 1. Type-Based Invalidation
+Invalidation is crucial for maintaining consistency. The `CacheStore` implements several invalidation methods:
 
-When a type is modified:
-1. Invalidate all direct cache entries for the type
-2. Invalidate affected query results
-3. Clear type dependencies
+1.  **`delete(key)`**: Removes a single entry and cleans up its dependencies.
+2.  **`delete_many(keys)`**: Efficiently removes multiple entries.
+3.  **`invalidate_type(type_name)`**: Removes all cache entries associated with a specific entity or relation type using `_type_dependencies`. This is critical for handling schema changes.
+4.  **`invalidate_query(query_hash)`**: Removes cache entries for a specific query hash using `_query_dependencies`.
+5.  **`invalidate_dependencies(key)`**: This is the core cascading invalidation logic. When an entry (e.g., an entity) is invalidated, this method finds all other entries (e.g., relations involving the entity, query results depending on the entity) that depend on it using `_reverse_dependencies`, `_entity_relations`, etc., and removes them recursively.
 
-```python
-async def invalidate_type(self, type_name: str):
-    # Direct dependencies
-    keys_to_remove = self._type_dependencies.get(type_name, set())
-    for key in keys_to_remove:
-        self._cache.pop(key, None)
-
-    # Query dependencies
-    query_keys = self._query_dependencies.get(type_name, set())
-    for key in query_keys:
-        self._cache.pop(key, None)
-```
-
-### 2. Query Invalidation
-
-Queries are invalidated when:
-- Any involved type is modified
-- Schema changes affect query conditions
-- Related types are modified
+TTL expiration is handled automatically by `cachetools.TTLCache` if configured.
 
 ## Integration with GraphContext
 

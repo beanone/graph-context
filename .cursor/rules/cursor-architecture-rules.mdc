@@ -1,0 +1,103 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# cursor-architecture-rules
+
+Configuration file for Cursor IDE to enforce Python software architecture best practices, ensuring modular, maintainable, and scalable designs while minimizing complex conditional logic.
+
+## Core Architectural Principles
+
+- **SOLID Principles**:
+  - **Single Responsibility**: Each class, function, or module must have one clearly defined responsibility to reduce complexity and improve maintainability.
+  - **Open/Closed**: Design classes and modules to be open for extension (e.g., through subclassing or plugins) but closed for modification to prevent unintended side effects.
+  - **Liskov Substitution**: Ensure subclasses can replace their base classes without altering program behavior, maintaining type safety and predictability.
+  - **Interface Segregation**: Avoid forcing clients to depend on interfaces they don’t use; keep interfaces small and focused.
+  - **Dependency Inversion**: Depend on abstractions (e.g., interfaces or abstract base classes) rather than concrete implementations to enhance flexibility.
+- **Simplicity and Clarity**: Prioritize simple, intuitive designs that are easy to understand and extend, avoiding over-engineering.
+- **Scalability**: Architect systems to handle increased load or complexity, using modular components and asynchronous processing where applicable.
+- **Maintainability**: Design for long-term maintenance by minimizing technical debt and ensuring clear separation of concerns.
+
+## Modularity and Separation of Concerns
+
+- **Module Size Limits**:
+  - Functions: Maximum 50 lines (excluding comments/docstrings) to keep logic focused.
+  - Classes: Maximum 10 methods to encourage cohesive responsibilities.
+  - Modules: Maximum 20 functions to maintain manageable scope.
+- **Reusable Components**:
+  - Favor composition over inheritance to create flexible, reusable classes and functions.
+  - Develop utility modules for shared logic, such as data processing or API helpers, to improve testability and reusability.
+- **Separation of Concerns**:
+  - Isolate data access logic (e.g., database queries, API calls) in dedicated modules.
+  - Keep business logic separate from presentation (e.g., API responses, UI rendering).
+  - Ensure each module addresses a single aspect of functionality (e.g., data validation, computation, or logging).
+- **Logical Package Structure**:
+  - Organize code into packages based on functionality (e.g., `data/`, `services/`, `api/`) to enhance navigability.
+  - Avoid circular imports by structuring dependencies hierarchically.
+
+## Control Flow Design
+
+- **Minimize Conditional Complexity**:
+  - Limit `if/else` nesting to 2 levels maximum to prevent spaghetti code.
+  - Refactor complex `if/else` chains into smaller, focused functions or methods.
+  - Avoid chained `elif` statements; use alternative patterns for clarity.
+- **Polymorphism**:
+  - Use polymorphism (e.g., subclassing, abstract base classes) to handle type-based behavior instead of `if/else` checks.
+  - Example: Replace `if isinstance(x, TypeA)` with a method overridden in `TypeA` and `TypeB` subclasses.
+- **Strategy Pattern**:
+  - Encapsulate interchangeable algorithms in separate classes or functions, selected dynamically, to replace conditional logic.
+  - Example: Use a strategy class for different data processing workflows instead of `if/else` branches.
+- **State Machines**:
+  - Implement state machines for complex state-dependent logic, using libraries like `transitions` or custom classes, to avoid nested conditionals.
+  - Example: Model workflow states (e.g., pending, processing, completed) with transitions instead of `if` checks.
+- **Dictionary-Based Dispatch**:
+  - Use dictionaries to map inputs to functions or classes for simple decision logic, reducing `if/else` statements.
+  - Example: Map command strings to handler functions (`{"save": save_handler, "delete": delete_handler}`).
+- **Early Returns (Guard Clauses)**:
+  - Use early returns to handle edge cases or validation at the start of functions, reducing nesting and improving readability.
+
+## Project Structure
+
+- **Enforced Layout**:
+  - `src/`: Core application code, organized by functionality (e.g., `src/models/`, `src/services/`).
+  - `tests/`: Unit and integration tests, mirroring `src/` structure (e.g., `tests/unit/`, `tests/integration/`).
+  - `docs/`: Documentation, including API specs and architecture overviews.
+  - `scripts/`: Utility scripts for setup, data processing, or deployment.
+  - `requirements.txt` or `pyproject.toml`: Dependency definitions for Poetry/Rye.
+- **File Organization**:
+  - Group related functionality in subdirectories (e.g., `src/api/endpoints/` for FastAPI routes).
+  - Keep configuration files (e.g., `.env`, `config.yaml`) in a dedicated `config/` directory.
+- **Consistency**:
+  - Maintain consistent naming and structure across modules to ease onboarding and maintenance.
+  - Use descriptive module names that reflect their purpose (e.g., `data_processing.py` vs. `utils.py`).
+
+## Dependency Management
+
+- **Dependency Injection**:
+  - Use dependency injection (e.g., FastAPI’s `Depends`) to provide dependencies explicitly, improving testability and flexibility.
+  - Example: Inject database clients or configuration objects into services.
+- **Avoid Global State**:
+  - Prohibit global variables or singletons for shared state; use context managers or dependency injection instead.
+- **Explicit Dependencies**:
+  - Declare dependencies clearly in function/class signatures rather than relying on implicit imports or globals.
+- **Loose Coupling**:
+  - Design modules to minimize interdependencies, using interfaces or events to communicate between components.
+
+## ML/AI-Specific Architecture
+
+- **Data Pipeline Architecture**:
+  - Design modular data pipelines with clear stages (e.g., ingestion, preprocessing, validation) using tools like `dvc` or custom scripts.
+  - Ensure reproducibility by versioning input data and preprocessing logic.
+- **Model Management**:
+  - Use a dedicated module for model versioning, storing checkpoints with `git-lfs` or cloud storage.
+  - Implement a model registry to track metadata (e.g., version, training parameters) using `mlflow` or similar.
+- **Experiment Configuration**:
+  - Store experiment configurations in `hydra` or YAML files to ensure reproducibility and ease of modification.
+- **LLM System Design**:
+  - Dedicate modules for prompt templates, versioned with `git`, to manage LLM inputs systematically.
+  - Implement context management using efficient data structures (e.g., deques) for conversation or session state.
+  - Use graph-based structures (e.g., NetworkX, as discussed on March 17, 2025) for semantic data modeling in RAG systems.
+- **Scalability for ML**:
+  - Design for distributed processing using `dask` or `pyspark` for large-scale data tasks.
+  - Optimize model inference with batch processing or asynchronous endpoints in FastAPI.

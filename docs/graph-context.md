@@ -28,6 +28,12 @@ graph-context/
 │   │   ├── context_base.py    # Base implementation of GraphContext
 │   │   ├── event_system.py    # Event system implementation
 │   │   ├── exceptions.py      # Context-specific exceptions
+│   │   ├── traversal.py       # Graph traversal implementation
+│   │   ├── caching/           # Caching system implementation
+│   │   │   ├── __init__.py
+│   │   │   ├── manager.py     # Cache manager
+│   │   │   ├── store.py       # Cache store implementations
+│   │   │   └── types.py       # Cache-specific types
 │   │   └── types/
 │   │       ├── __init__.py
 │   │       ├── type_base.py   # Base type definitions
@@ -39,7 +45,12 @@ graph-context/
     │   ├── test_interface.py
     │   ├── test_context_base.py
     │   ├── test_store.py
-    │   └── test_event_system.py
+    │   ├── test_event_system.py
+    │   └── test_traversal.py
+    ├── caching/
+    │   ├── __init__.py
+    │   ├── test_manager.py
+    │   └── test_store.py
     └── types/
         ├── __init__.py
         └── test_type_base.py
@@ -51,102 +62,235 @@ graph-context/
 
 ```python
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Any, TypeVar, Generic
-from .types.type_base import Entity, Relation, QuerySpec, TraversalSpec
+from typing import Any, TypeVar
 
-T = TypeVar('T')
+from .types.type_base import Entity, QuerySpec, Relation, TraversalSpec
 
-class GraphContext(ABC, Generic[T]):
+T = TypeVar("T")
+
+class GraphContext(ABC):
     """
     Abstract base class defining the core graph operations interface.
-    The generic type T represents the native node/edge types of the backend.
     """
 
     @abstractmethod
-    async def create_entity(
-        self,
-        entity_type: str,
-        properties: Dict[str, Any]
-    ) -> str:
-        """Create a new entity in the graph."""
+    async def cleanup(self) -> None:
+        """
+        Clean up the graph context.
+
+        This method should be called when the context is no longer needed.
+        It should close connections, clean up resources, etc.
+
+        Raises:
+            GraphContextError: If cleanup fails
+        """
         pass
 
     @abstractmethod
-    async def get_entity(
-        self,
-        entity_id: str
-    ) -> Optional[Entity]:
-        """Retrieve an entity by ID."""
+    async def create_entity(self, entity_type: str, properties: dict[str, Any]) -> Entity:
+        """
+        Create a new entity in the graph.
+
+        Args:
+            entity_type: Type of the entity to create
+            properties: Dictionary of property values
+
+        Returns:
+            The created entity
+
+        Raises:
+            ValidationError: If property validation fails
+            SchemaError: If the entity type is not defined in the schema
+            GraphContextError: If the operation fails
+        """
         pass
 
     @abstractmethod
-    async def update_entity(
-        self,
-        entity_id: str,
-        properties: Dict[str, Any]
-    ) -> bool:
-        """Update an existing entity."""
+    async def get_entity(self, entity_id: str) -> Entity | None:
+        """
+        Retrieve an entity by ID.
+
+        Args:
+            entity_id: ID of the entity to retrieve
+
+        Returns:
+            The entity if found, None otherwise
+
+        Raises:
+            GraphContextError: If the operation fails
+        """
         pass
 
     @abstractmethod
-    async def delete_entity(
-        self,
-        entity_id: str
-    ) -> bool:
-        """Delete an entity from the graph."""
+    async def update_entity(self, entity_id: str, properties: dict[str, Any]) -> Entity | None:
+        """
+        Update an existing entity.
+
+        Args:
+            entity_id: ID of the entity to update
+            properties: Dictionary of property values to update
+
+        Returns:
+            The updated entity if successful, None if the entity was not found
+
+        Raises:
+            ValidationError: If property validation fails
+            SchemaError: If the updated properties violate the schema
+            GraphContextError: If the operation fails
+        """
+        pass
+
+    @abstractmethod
+    async def delete_entity(self, entity_id: str) -> bool:
+        """
+        Delete an entity from the graph.
+
+        Args:
+            entity_id: ID of the entity to delete
+
+        Returns:
+            True if the entity was deleted, False if it was not found
+
+        Raises:
+            GraphContextError: If the operation fails
+        """
         pass
 
     @abstractmethod
     async def create_relation(
-        self,
-        relation_type: str,
-        from_entity: str,
-        to_entity: str,
-        properties: Optional[Dict[str, Any]] = None
-    ) -> str:
-        """Create a new relation between entities."""
+        self, relation_type: str, from_entity: str, to_entity: str, properties: dict[str, Any] | None = None
+    ) -> Relation:
+        """
+        Create a new relation between entities.
+
+        Args:
+            relation_type: Type of the relation to create
+            from_entity: ID of the source entity
+            to_entity: ID of the target entity
+            properties: Optional dictionary of property values
+
+        Returns:
+            The created relation
+
+        Raises:
+            ValidationError: If property validation fails
+            SchemaError: If the relation type is not defined in the schema
+            EntityNotFoundError: If either entity does not exist
+            GraphContextError: If the operation fails
+        """
         pass
 
     @abstractmethod
-    async def get_relation(
-        self,
-        relation_id: str
-    ) -> Optional[Relation]:
-        """Retrieve a relation by ID."""
+    async def get_relation(self, relation_id: str) -> Relation | None:
+        """
+        Retrieve a relation by ID.
+
+        Args:
+            relation_id: ID of the relation to retrieve
+
+        Returns:
+            The relation if found, None otherwise
+
+        Raises:
+            GraphContextError: If the operation fails
+        """
         pass
 
     @abstractmethod
-    async def update_relation(
-        self,
-        relation_id: str,
-        properties: Dict[str, Any]
-    ) -> bool:
-        """Update an existing relation."""
+    async def update_relation(self, relation_id: str, properties: dict[str, Any]) -> Relation | None:
+        """
+        Update an existing relation.
+
+        Args:
+            relation_id: ID of the relation to update
+            properties: Dictionary of property values to update
+
+        Returns:
+            The updated relation if successful, None if the relation was not found
+
+        Raises:
+            ValidationError: If property validation fails
+            SchemaError: If the updated properties violate the schema
+            GraphContextError: If the operation fails
+        """
         pass
 
     @abstractmethod
-    async def delete_relation(
-        self,
-        relation_id: str
-    ) -> bool:
-        """Delete a relation from the graph."""
+    async def query(self, query_spec: QuerySpec) -> list[Entity]:
+        """
+        Execute a query against the graph.
+
+        Args:
+            query_spec: Specification of the query to execute
+
+        Returns:
+            List of entities matching the query
+
+        Raises:
+            ValidationError: If the query specification is invalid
+            GraphContextError: If the operation fails
+        """
         pass
 
     @abstractmethod
-    async def query(
-        self,
-        query_spec: QuerySpec
-    ) -> List[Entity]:
-        """Execute a query against the graph."""
+    async def traverse(self, start_entity: str, traversal_spec: TraversalSpec) -> list[Entity]:
+        """
+        Traverse the graph starting from a given entity.
+
+        Args:
+            start_entity: ID of the entity to start traversal from
+            traversal_spec: Specification of the traversal
+
+        Returns:
+            List of entities found during traversal
+
+        Raises:
+            EntityNotFoundError: If the start entity does not exist
+            ValidationError: If the traversal specification is invalid
+            GraphContextError: If the operation fails
+        """
         pass
 
     @abstractmethod
-    async def traverse(
-        self,
-        start_entity: str,
-        traversal_spec: TraversalSpec
-    ) -> List[Entity]:
-        """Traverse the graph starting from a given entity."""
+    async def begin_transaction(self) -> None:
+        """
+        Begin a new transaction.
+
+        This method should be called before a series of operations that need
+        to be executed atomically.
+
+        Raises:
+            TransactionError: If a transaction is already in progress or if
+                            the operation fails
+        """
+        pass
+
+    @abstractmethod
+    async def commit_transaction(self) -> None:
+        """
+        Commit the current transaction.
+
+        This method should be called to persist the changes made during the
+        current transaction.
+
+        Raises:
+            TransactionError: If no transaction is in progress or if the
+                            operation fails
+        """
+        pass
+
+    @abstractmethod
+    async def rollback_transaction(self) -> None:
+        """
+        Roll back the current transaction.
+
+        This method should be called to discard the changes made during the
+        current transaction.
+
+        Raises:
+            TransactionError: If no transaction is in progress or if the
+                            operation fails
+        """
         pass
 ```
 
@@ -273,52 +417,107 @@ class GraphStore(ABC):
 The event system enables features to react to graph operations without coupling to specific implementations:
 
 ```python
+from collections import defaultdict
+from datetime import datetime, UTC
 from enum import Enum
-from typing import Any, Callable, Awaitable, Dict
-from pydantic import BaseModel
-from datetime import datetime
+from typing import Any, Awaitable, Callable, Dict, Optional, Set
+from uuid import uuid4
+
+from pydantic import BaseModel, ConfigDict, Field
+
+# Type alias for event handlers
+EventHandler = Callable[["EventContext"], Awaitable[None]]
 
 class GraphEvent(str, Enum):
-    """Core graph operation events."""
+    """Core graph operation events.
+
+    These events represent the fundamental operations that can occur in the graph,
+    without making assumptions about how they will be used.
+    """
+
+    # Entity operations
     ENTITY_READ = "entity:read"
     ENTITY_WRITE = "entity:write"
     ENTITY_DELETE = "entity:delete"
     ENTITY_BULK_WRITE = "entity:bulk_write"
     ENTITY_BULK_DELETE = "entity:bulk_delete"
+
+    # Relation operations
     RELATION_READ = "relation:read"
     RELATION_WRITE = "relation:write"
     RELATION_DELETE = "relation:delete"
     RELATION_BULK_WRITE = "relation:bulk_write"
     RELATION_BULK_DELETE = "relation:bulk_delete"
+
+    # Query operations
     QUERY_EXECUTED = "query:executed"
     TRAVERSAL_EXECUTED = "traversal:executed"
+
+    # Schema operations
     SCHEMA_MODIFIED = "schema:modified"
     TYPE_MODIFIED = "type:modified"
+
+    # Transaction operations
     TRANSACTION_BEGIN = "transaction:begin"
     TRANSACTION_COMMIT = "transaction:commit"
     TRANSACTION_ROLLBACK = "transaction:rollback"
 
 class EventMetadata(BaseModel):
-    """Metadata for graph events."""
+    """Metadata for graph events.
+
+    Contains structured information about the operation that can be used
+    by event handlers for tasks like caching and logging.
+    """
+
+    # Type information
     entity_type: Optional[str] = None
     relation_type: Optional[str] = None
-    operation_id: str
-    timestamp: datetime
+    affected_types: Set[str] = Field(default_factory=set)
+
+    # Operation details
+    operation_id: str = Field(default_factory=lambda: str(uuid4()))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    # Query/traversal metadata
     query_spec: Optional[Dict[str, Any]] = None
     traversal_spec: Optional[Dict[str, Any]] = None
+
+    # Bulk operation metadata
     is_bulk: bool = False
     affected_count: Optional[int] = None
 
+    model_config = ConfigDict(frozen=True)
+
 class EventContext(BaseModel):
-    """Context for a graph event."""
+    """Context for a graph event.
+
+    Contains the event type and any relevant data about the operation.
+    The data field is intentionally generic to allow any operation-specific
+    information to be passed without coupling to specific implementations.
+
+    This class is immutable to ensure event data cannot be modified after creation.
+    """
+
     event: GraphEvent
     metadata: EventMetadata
     data: Dict[str, Any]
 
-EventHandler = Callable[[EventContext], Awaitable[None]]
+    model_config = ConfigDict(frozen=True)
+
+    def __init__(self, **data: Any) -> None:
+        """Initialize with default empty data dict if none provided."""
+        if "data" not in data:
+            data["data"] = {}
+        if "metadata" not in data:
+            data["metadata"] = EventMetadata()
+        super().__init__(**data)
 
 class EventSystem:
-    """Simple pub/sub system for graph operations."""
+    """Simple pub/sub system for graph operations.
+
+    Provides mechanisms to subscribe to and emit events for graph operations
+    without making assumptions about how those events will be used.
+    """
 
     def __init__(self) -> None:
         """Initialize the event system."""
@@ -326,34 +525,128 @@ class EventSystem:
         self._enabled = True
 
     async def subscribe(self, event: GraphEvent, handler: EventHandler) -> None:
-        """Subscribe to a specific graph event."""
+        """Subscribe to a specific graph event.
+
+        Args:
+            event: The graph event to subscribe to
+            handler: Async function to call when the event occurs
+        """
         self._handlers[event].append(handler)
 
     async def unsubscribe(self, event: GraphEvent, handler: EventHandler) -> None:
-        """Unsubscribe from a specific graph event."""
+        """Unsubscribe from a specific graph event.
+
+        Args:
+            event: The graph event to unsubscribe from
+            handler: The handler to remove
+
+        Note:
+            If the handler is not found, this operation is a no-op.
+        """
         try:
             self._handlers[event].remove(handler)
         except ValueError:
-            pass
+            pass  # Handler wasn't registered, ignore
 
-    async def emit(self, event: GraphEvent, metadata: Optional[EventMetadata] = None, **data: Any) -> None:
-        """Emit a graph event to all subscribers."""
+    async def emit(
+        self, event: GraphEvent, metadata: Optional[EventMetadata] = None, **data: Any
+    ) -> None:
+        """Emit a graph event to all subscribers.
+
+        Args:
+            event: The graph event that occurred
+            metadata: Optional event metadata. If not provided, default metadata will be created.
+            **data: Any relevant data about the operation
+        """
         if not self._enabled:
             return
 
+        # If metadata is not provided, create default metadata based on event type and data
         if metadata is None:
-            metadata = EventMetadata(
-                operation_id=str(uuid4()),
-                timestamp=datetime.utcnow()
-            )
+            metadata_kwargs = self.create_metadata(event, data)
+            metadata = EventMetadata(**metadata_kwargs)
 
         context = EventContext(event=event, metadata=metadata, data=data)
 
+        # Execute handlers sequentially to maintain ordering
+        # This is important for operations that might depend on each other
         for handler in self._handlers[event]:
             try:
                 await handler(context)
             except Exception:
+                # Log error but continue processing handlers
+                # This prevents one handler from breaking others
+                # TODO: Add proper error logging
                 continue
+
+    def create_metadata(self, event: GraphEvent, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create metadata for an event based on event type and data."""
+        metadata_kwargs = {}
+
+        # Set bulk operation metadata
+        if event in {
+            GraphEvent.ENTITY_BULK_WRITE,
+            GraphEvent.ENTITY_BULK_DELETE,
+            GraphEvent.RELATION_BULK_WRITE,
+            GraphEvent.RELATION_BULK_DELETE,
+        }:
+            metadata_kwargs["is_bulk"] = True
+            if "entities" in data:
+                metadata_kwargs["affected_count"] = len(data["entities"])
+            elif "relations" in data:
+                metadata_kwargs["affected_count"] = len(data["relations"])
+
+        # Set query metadata
+        if event == GraphEvent.QUERY_EXECUTED and "query_spec" in data:
+            metadata_kwargs["query_spec"] = data["query_spec"]
+
+        # Set traversal metadata
+        if event == GraphEvent.TRAVERSAL_EXECUTED and "traversal_spec" in data:
+            metadata_kwargs["traversal_spec"] = data["traversal_spec"]
+
+        # Set type information
+        if "entity_type" in data:
+            metadata_kwargs["entity_type"] = data["entity_type"]
+        if "relation_type" in data:
+            metadata_kwargs["relation_type"] = data["relation_type"]
+        if "affected_types" in data:
+            metadata_kwargs["affected_types"] = set(data["affected_types"])
+
+        return metadata_kwargs
+
+    def enable(self) -> None:
+        """Enable event emission."""
+        self._enabled = True
+
+    def disable(self) -> None:
+        """Disable event emission.
+
+        This can be useful during bulk operations or when
+        temporary suppression of events is needed.
+        """
+        self._enabled = False
+```
+
+Example usage with metadata tracking:
+
+```python
+async def log_entity_changes(event_context: EventContext) -> None:
+    """Example event handler that logs entity changes with metadata."""
+    metadata = event_context.metadata
+    print(f"Operation: {metadata.operation_id}")
+    print(f"Timestamp: {metadata.timestamp}")
+    print(f"Entity Type: {metadata.entity_type}")
+
+    if metadata.is_bulk:
+        print(f"Bulk operation affecting {metadata.affected_count} entities")
+
+    if metadata.affected_types:
+        print(f"Affected types: {', '.join(metadata.affected_types)}")
+
+# Subscribe to entity write events
+await context.event_system.subscribe(GraphEvent.ENTITY_WRITE, log_entity_changes)
+
+# The handler will be called with detailed metadata for each entity write operation
 ```
 
 ### Store Configuration and Factory
@@ -495,121 +788,3 @@ dev = [
     "ruff>=0.1.6",
 ]
 ```
-
-## Usage Examples
-
-### Basic Entity Operations
-
-```python
-# Create an entity
-entity_id = await graph_context.create_entity(
-    entity_type="Person",
-    properties={
-        "name": "Ada Lovelace",
-        "birth_year": 1815,
-        "fields": ["mathematics", "computing"]
-    }
-)
-
-# Retrieve an entity
-entity = await graph_context.get_entity(entity_id)
-
-# Update an entity
-success = await graph_context.update_entity(
-    entity_id,
-    properties={"death_year": 1852}
-)
-
-# Delete an entity
-success = await graph_context.delete_entity(entity_id)
-```
-
-### Relation Operations
-
-```python
-# Create a relation
-relation_id = await graph_context.create_relation(
-    relation_type="authored",
-    from_entity=person_id,
-    to_entity=document_id,
-    properties={"year": 1843}
-)
-
-# Query related entities
-results = await graph_context.query({
-    "start": person_id,
-    "relation": "authored",
-    "direction": "outbound"
-})
-```
-
-### Graph Traversal
-
-```python
-# Traverse the graph
-results = await graph_context.traverse(
-    start_entity=person_id,
-    traversal_spec={
-        "max_depth": 2,
-        "relation_types": ["authored", "cites"],
-        "direction": "any"
-    }
-)
-```
-
-## Performance Considerations
-
-1. **Caching Strategy**
-   - Implement caching for frequently accessed entities
-   - Cache validation results for common types
-   - Use LRU cache for query results
-
-2. **Batch Operations**
-   - Support bulk entity/relation operations
-   - Implement efficient batch querying
-   - Optimize traversal for large graphs
-
-3. **Memory Management**
-   - Implement proper resource cleanup
-   - Use connection pooling for database backends
-   - Handle large result sets efficiently
-
-## Security Considerations
-
-1. **Input Validation**
-   - Sanitize all input parameters
-   - Validate property values against schema
-   - Prevent injection attacks in queries
-
-2. **Access Control**
-   - Support for tenant isolation
-   - Entity-level access control
-   - Audit logging for critical operations
-
-## Future Extensions
-
-1. **Advanced Query Features**
-   - Full-text search integration
-   - Semantic similarity search
-   - Pattern matching queries
-
-2. **Schema Evolution**
-   - Schema versioning support
-   - Migration tooling
-   - Backward compatibility
-
-3. **Performance Optimizations**
-   - Query plan optimization
-   - Parallel query execution
-   - Distributed graph support
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Implement changes with tests
-4. Submit a pull request
-
-## License
-
-MIT License - See LICENSE file for details
