@@ -5,28 +5,29 @@ alwaysApply: false
 ---
 # cursor-refactoring-guide
 
-A comprehensive guide for refactoring Python code to achieve specific, well-defined goals, such as improving readability, maintainability, modularity, testability, or performance, while strictly adhering to the intended scope. Aligned with `cursor-rules` and `cursor-architecture-rules`, this guide supports projects using FastAPI, pytest, Poetry, and ML/AI frameworks, addressing issues like "spaghetti code" with excessive `if/else` statements as part of focused, goal-driven refactoring. All refactoring efforts must remain within the defined objectives to prevent unsolicited changes, as seen with tools like Cursor IDE.
+A comprehensive guide for refactoring Python code to achieve specific, user-defined goals, such as improving readability, maintainability, modularity, testability, or performance, while strictly adhering to the intended scope. Aligned with `cursor-rules` and `cursor-architecture-rules`, this guide supports projects using FastAPI, pytest, Poetry, and ML/AI frameworks, addressing issues like "spaghetti code" with excessive `if/else` statements as part of focused, goal-driven refactoring. Goals are defined by the user, and the LLM (e.g., Cursor IDE) must follow these without introducing unsolicited changes.
 
 ## Introduction
 
-Refactoring is the process of improving code structure without altering its external behavior, driven by specific goals (e.g., simplifying logic, enhancing testability, or optimizing performance). This guide ensures refactoring stays focused on these goals, avoiding out-of-scope modifications that could introduce complexity or deviate from intent. It aligns with PEP 8, SOLID principles, Google-style docstrings, and a 90%+ test coverage target, tailored to your tech stack and ML/AI workflows.
+Refactoring is the process of improving code structure without altering its external behavior, driven by specific goals set by the user (e.g., simplifying logic, enhancing testability, or optimizing performance). This guide ensures refactoring adheres to user-specified goals, avoiding out-of-scope modifications that could introduce complexity or deviate from intent. It aligns with PEP 8, SOLID principles, Google-style docstrings, and a 90%+ test coverage target, tailored to your tech stack and ML/AI workflows.
 
 **Key Objectives**:
-- Achieve targeted improvements relevant to the defined goal (e.g., reduce `if/else` nesting, modularize code).
+- Achieve user-defined improvements (e.g., reduce `if/else` nesting, modularize code).
 - Maintain strict scope discipline to prevent unnecessary or unsolicited changes.
 - Ensure refactored code is clear, maintainable, testable, and efficient.
 
 ## Preparation
 
-Prepare the codebase to ensure refactoring is focused and effective, with a clear emphasis on the specific goal:
+Prepare the codebase to ensure refactoring aligns with the user’s specific goal, with the LLM following user instructions:
 
-1. **Define Refactoring Goals**:
-   - Clearly specify the objective (e.g., "Simplify control flow in `src/services/processor.py`", "Increase test coverage in `src/models/`").
+1. **Specify User-Defined Refactoring Goals**:
+   - The user must clearly specify the objective (e.g., "Simplify control flow in `src/services/processor.py`", "Increase test coverage in `src/models/`").
    - Document goals in `README.md` or `docs/refactoring.md` with measurable criteria (e.g., "Reduce function length to <50 lines").
+   - The LLM must not define goals; it follows the user’s explicit instructions.
    - Explicitly limit scope to avoid unrelated changes (e.g., "Only refactor `processor.py`, defer other modules").
 
 2. **Assess the Codebase**:
-   - Target code relevant to the goal (e.g., functions with >2 levels of `if/else` nesting, modules with <90% test coverage).
+   - Target code relevant to the user’s goal (e.g., functions with >2 levels of `if/else` nesting, modules with <90% test coverage).
    - Use Ruff to identify issues tied to the goal (e.g., PEP 8 violations, unused code).
    - Analyze dependencies with `pydeps` only if the goal involves decoupling.
 
@@ -43,30 +44,30 @@ Prepare the codebase to ensure refactoring is focused and effective, with a clea
    - Verify Ruff: `ruff check .`.
 
 6. **Scope Control**:
-   - Restrict changes to code directly related to the goal.
+   - Restrict changes to code directly related to the user’s goal.
    - If unrelated issues are found, note them for future refactoring but do not address them now.
 
 ## General Refactoring Principles
 
-Adhere to these principles to ensure refactoring achieves the specific goal while maintaining discipline:
+Adhere to these principles to ensure refactoring achieves the user-specified goal while maintaining discipline:
 
-- **Focus on Goal**: Prioritize changes that directly address the defined objective; avoid scope creep or unrelated improvements.
+- **Follow User’s Goal**: Implement changes that directly address the user-defined objective; avoid scope creep or unrelated improvements.
 - **Stay Within Scope**: Only modify code relevant to the goal, preventing unsolicited changes like those from Cursor IDE.
 - **Incremental Changes**: Refactor in small, testable steps, committing after each to minimize risk.
 - **Preserve Behavior**: Use tests to ensure refactored code maintains original functionality.
 - **Align with Standards**: Follow `.cursor-rules` (e.g., PEP 8, type annotations, Google-style docstrings).
-- **Enhance Quality**: Target improvements in readability, modularity, testability, or performance, as specified by the goal.
+- **Enhance Quality**: Target improvements in readability, modularity, testability, or performance, as specified by the user’s goal.
 - **Simplify Complexity**: Reduce technical debt, including conditional complexity, while keeping changes relevant.
 
 ## Specific Refactoring Techniques
 
-These techniques address common refactoring goals, applied only when relevant to the specific objective. Each includes a stated goal to demonstrate focus.
+These techniques address common refactoring goals, applied only when relevant to the user’s specific objective. Each includes a stated goal to demonstrate focus.
 
 ### 1. Eliminate Code Duplication
 
 **Goal**: Remove duplicated logic in `src/services/` to improve maintainability.
 
-**Technique** (Apply only if duplication is the target):
+**Technique** (Apply only if duplication is the user’s target):
 - Extract common code into reusable functions or utilities.
 - Parameterize variations to avoid repetition.
 ```python
@@ -104,7 +105,7 @@ def process_order(data: dict) -> dict:
 
 **Goal**: Reduce `if/else` nesting in `src/api/endpoints.py` to improve readability.
 
-**Techniques** (Apply only if simplifying conditionals is the target):
+**Techniques** (Apply only if simplifying conditionals is the user’s target):
 - **Early Returns**: Handle edge cases early.
 ```python
 # Before (src/api/endpoints.py)
@@ -184,7 +185,7 @@ def process_model(model: Model, data: dict) -> float:
 
 **Goal**: Shorten functions in `src/services/processor.py` to <50 lines for maintainability.
 
-**Technique** (Apply only if function length is the target):
+**Technique** (Apply only if function length is the user’s target):
 - Split into smaller, single-responsibility functions.
 ```python
 # Before (src/services/processor.py)
@@ -218,7 +219,7 @@ def handle_request(request: dict) -> dict:
 
 **Goal**: Reduce class size in `src/pipeline.py` to <10 methods for single responsibility.
 
-**Technique** (Apply only if class size is the target):
+**Technique** (Apply only if class size is the user’s target):
 - Extract methods into separate classes, using composition.
 ```python
 # Before (src/pipeline.py)
@@ -264,7 +265,7 @@ class Pipeline:
 
 **Goal**: Enhance clarity in `src/utils/` with better names and docstrings.
 
-**Technique** (Apply only if readability is the target):
+**Technique** (Apply only if readability is the user’s target):
 - Use descriptive names and comprehensive Google-style docstrings.
 ```python
 # Before (src/utils/math.py)
@@ -295,7 +296,7 @@ def calculate_average(numbers: list[float]) -> float:
 
 **Goal**: Decouple dependencies in `src/api/` for testability.
 
-**Technique** (Apply only if coupling is the target):
+**Technique** (Apply only if coupling is the user’s target):
 - Use dependency injection with explicit parameters or FastAPI’s `Depends`.
 ```python
 # Before (src/api/endpoints.py)
@@ -321,7 +322,7 @@ def fetch_user(user_id: int, db: Database = Depends(get_db)) -> dict:
 
 **Goal**: Improve efficiency in `src/models/` for faster inference.
 
-**Technique** (Apply only if performance is the target):
+**Technique** (Apply only if performance is the user’s target):
 - Use caching and efficient data structures.
 ```python
 # Before (src/models/inference.py)
@@ -344,7 +345,7 @@ def compute_scores(data: list) -> list:
 
 **Goal**: Streamline experiment logic in `src/experiments/` for reproducibility.
 
-**Technique** (Apply only if ML/AI reproducibility is the target):
+**Technique** (Apply only if ML/AI reproducibility is the user’s target):
 - Use configuration-driven workflows with `hydra` or YAML.
 ```python
 # Before (src/experiments/run.py)
@@ -379,7 +380,7 @@ def run_experiment(config_path: str, data: list) -> float:
 
 ## Validation and Testing
 
-Validate refactored code to ensure it achieves the specific goal and meets quality standards:
+Validate refactored code to ensure it achieves the user-specified goal and meets quality standards:
 
 1. **Run Tests**:
    - Execute `pytest --cov --cov-report=html` to confirm tests pass and coverage remains 90%+.
@@ -403,12 +404,12 @@ Validate refactored code to ensure it achieves the specific goal and meets quali
 
 ## Best Practices
 
-- **Define Clear Goals**: Start with a specific, measurable refactoring objective (e.g., "Reduce `if/else` nesting in `endpoints.py`") to guide all changes.
-- **Stay In Scope**: Strictly limit refactoring to the goal; defer unrelated improvements to avoid unsolicited changes.
+- **Follow User-Defined Goals**: Adhere strictly to the user’s specified objective (e.g., "Reduce `if/else` nesting in `endpoints.py`") to guide all changes; the LLM must not set goals.
+- **Stay In Scope**: Limit refactoring to the user’s goal; defer unrelated improvements to avoid unsolicited changes.
 - **Commit Incrementally**: Use `git commit` after each step (e.g., `git commit -m "Simplify get_user_role with early returns"`).
 - **Preserve Functionality**: Ensure behavior remains unchanged unless the goal requires it.
 - **Document Trade-Offs**: Note decisions in comments (e.g., "Used dict dispatch for clarity, minor memory cost").
-- **Review Cursor Suggestions**: Ensure Cursor’s proposals align with the goal and avoid adding unnecessary `if/else`.
+- **Review Cursor Suggestions**: Ensure Cursor’s proposals align with the user’s goal and avoid adding unnecessary `if/else`.
 - **Use Tests as Guardrails**: Rely on `pytest` to catch regressions.
 - **Balance Simplicity and Modularity**: Avoid over-modularization; keep code intuitive.
 - **Maintain Standards**: Adhere to `.cursor-rules` (e.g., type annotations, single responsibility) and `.cursor-architecture-rules` (e.g., SOLID principles).
