@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/logos/banner.svg" alt="Graph Context Banner" width="100%">
+  <img src="https://raw.githubusercontent.com/beanone/graph-context/refs/heads/main/docs/assets/logos/banner.svg" alt="Graph Context Banner" width="100%">
 </p>
 
 A flexible and type-safe graph database abstraction layer for Python, providing a robust foundation for building graph-based applications with strong validation and transaction support.
