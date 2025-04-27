@@ -59,29 +59,19 @@ classDiagram
 
     class CacheStore {
         -_cache: TTLCache | Dict
-        -_type_dependencies: Dict[str, Set[str]]
-        -_query_dependencies: Dict[str, Set[str]]
-        -_reverse_dependencies: Dict[str, Set[str]]
-        -_entity_relations: Dict[str, Set[str]]
-        -_relation_entities: Dict[str, Set[str]]
         +get()
         +set()
         +delete()
-        +delete_many()
-        +scan()
         +clear()
-        +invalidate_type()
-        +invalidate_query()
-        +invalidate_dependencies()
+        +scan()
     }
 
     class DisabledCacheStore {
         +get()
         +set()
         +delete()
-        +delete_many()
-        +scan()
         +clear()
+        +scan()
     }
 
     class CacheEntry~T~ {
@@ -384,6 +374,40 @@ graph LR
    - Tracks dependencies
    - Supports query result caching
 
+### Cache Entry Model
+
+The `CacheEntry` class serves as the core data structure for storing cached values with associated metadata:
+
+```python
+class CacheEntry[T]:
+    value: T                      # The cached value (any JSON-serializable value)
+    created_at: datetime          # Entry creation timestamp (UTC)
+    entity_type: Optional[str]    # Type name for entity entries
+    relation_type: Optional[str]  # Type name for relation entries
+    operation_id: str             # Unique identifier for creating operation (UUID)
+    query_hash: Optional[str]     # Hash of query that produced this result
+    dependencies: Set[str]        # Entity/relation IDs this entry depends on
+```
+
+### Cache Store Implementation
+
+The caching system provides two main cache store implementations:
+
+1. **CacheStore**: The primary implementation supporting TTL-based caching
+2. **DisabledCacheStore**: A no-op implementation for when caching is disabled
+
+#### Features
+- **TTL Support**: Configurable time-to-live for cache entries using `cachetools.TTLCache`
+- **Size Limits**: Configurable maximum cache size (default: 10,000 entries)
+- **Default TTL**: 5 minutes default TTL for entries
+- **Async Interface**: All operations are async-compatible
+- **Key Operations**:
+  - `get(key)`: Retrieve entry by key
+  - `set(key, entry)`: Store new entry
+  - `delete(key)`: Remove entry
+  - `clear()`: Remove all entries
+  - `scan()`: Async iterator over all entries
+
 ### Key Features
 
 1. **Transaction Support**
@@ -500,163 +524,56 @@ The caching system is highly configurable through the `CacheConfig` class:
 
 ## Caching Strategies
 
-### 1. Entity Caching
+## Usage Examples
 
-Entities are cached with their type information:
-```python
-cache_key = f"get_entity:entity_id={entity_id}"
-type_dependencies[entity.type].add(cache_key)
-```
-
-Cache Invalidation Triggers:
-- Entity updates/deletes
-- Schema modifications to entity type
-- Related type modifications
-
-### 2. Relation Caching
-
-Relations are cached with both relation type and connected entity types:
-```python
-cache_key = f"get_relation:relation_id={relation_id}"
-type_dependencies[relation.type].add(cache_key)
-```
-
-Cache Invalidation Triggers:
-- Relation updates/deletes
-- Schema modifications to relation type
-- Connected entity type modifications
-
-### 3. Query Result Caching
-
-Query results are cached with involved type tracking:
-```python
-cache_key = f"query:query_hash={query_hash}"
-for involved_type in involved_types:
-    query_dependencies[involved_type].add(cache_key)
-```
-
-Cache Invalidation Triggers:
-- Any modification to involved types
-- Schema changes to involved types
-- Query specification changes
-
-## Event Handling
-
-The `CacheManager` subscribes to various `GraphEvent`s emitted by the base `GraphContext`'s `EventSystem`. The `handle_event` method routes these events to specific handlers:
-
--   **Read Events (`ENTITY_READ`, `RELATION_READ`, `QUERY_EXECUTED`, `TRAVERSAL_EXECUTED`)**: These events trigger attempts to populate the cache if the item wasn't already present (cache miss).
--   **Write Events (`ENTITY_WRITE`, `RELATION_WRITE`, `ENTITY_BULK_WRITE`, `RELATION_BULK_WRITE`)**: These events trigger invalidation of the corresponding cache entries and potentially dependent entries (like queries).
--   **Delete Events (`ENTITY_DELETE`, `RELATION_DELETE`, `ENTITY_BULK_DELETE`, `RELATION_BULK_DELETE`)**: Similar to write events, these trigger invalidation.
--   **Schema Events (`SCHEMA_MODIFIED`, `TYPE_MODIFIED`)**: These events typically trigger broad cache invalidation, often clearing significant portions or all of the cache via `invalidate_type` or `clear`.
+### Basic Entity Caching
 
 ```python
-# Example CacheManager Event Handler Snippet (Conceptual)
+# Create and cache entity
+person = await graph_context.create_entity(
+    "Person",
+    {"name": "John Doe", "age": 30}
+)
 
-class CacheManager:
-    # ... (init and other methods)
+# Cached read
+person = await graph_context.get_entity(person.id)
 
-    async def handle_event(self, context: EventContext) -> None:
-        if not self.is_enabled():
-            return
+# Modify schema and invalidate cache
+person_type = graph_context._entity_types["Person"]
+person_type.properties["email"] = PropertyDefinition(
+    type=PropertyType.STRING,
+    required=True
+)
 
-        event_handlers = {
-            GraphEvent.ENTITY_READ: self._handle_entity_read,
-            GraphEvent.RELATION_READ: self._handle_relation_read,
-            GraphEvent.QUERY_EXECUTED: self._handle_query_executed,
-            GraphEvent.TRAVERSAL_EXECUTED: self._handle_traversal_executed,
-            # Write/Delete events often map to similar invalidation handlers
-            GraphEvent.ENTITY_WRITE: self._handle_entity_write, # Invalidate entity
-            GraphEvent.ENTITY_BULK_WRITE: self._handle_entity_write,
-            GraphEvent.ENTITY_DELETE: self._handle_entity_write,
-            GraphEvent.ENTITY_BULK_DELETE: self._handle_entity_write,
-            GraphEvent.RELATION_WRITE: self._handle_relation_write, # Invalidate relation
-            GraphEvent.RELATION_BULK_WRITE: self._handle_relation_write,
-            GraphEvent.RELATION_DELETE: self._handle_relation_write,
-            GraphEvent.RELATION_BULK_DELETE: self._handle_relation_write,
-            GraphEvent.SCHEMA_MODIFIED: self._handle_schema_modified, # Clear relevant caches
-            GraphEvent.TYPE_MODIFIED: self._handle_schema_modified,
-        }
-
-        handler = event_handlers.get(context.event)
-        if handler:
-            await handler(context)
-
-    async def _handle_entity_read(self, context: EventContext):
-        # Called *after* a successful read from the base context (cache miss)
-        entity = context.data.get("entity")
-        entity_id = context.data.get("entity_id")
-        if entity and entity_id:
-            entry = CacheEntry(value=entity, entity_type=entity.type)
-            store = self.store_manager.get_entity_store()
-            await store.set(entity_id, entry)
-
-    async def _handle_entity_write(self, context: EventContext):
-        # Handles write, bulk write, delete, bulk delete for entities
-        entity_id = context.data.get("entity_id")
-        if entity_id:
-            store = self.store_manager.get_entity_store()
-            # Invalidate the entity itself and any dependent entries
-            await store.invalidate_dependencies(entity_id)
-            await store.delete(entity_id)
-
-    async def _handle_schema_modified(self, context: EventContext):
-        # Broad invalidation for schema changes
-        affected_type = context.metadata.get("entity_type") or context.metadata.get("relation_type")
-        if affected_type:
-            await self.store_manager.entity_store.invalidate_type(affected_type)
-            await self.store_manager.relation_store.invalidate_type(affected_type)
-            # Potentially invalidate relevant queries/traversals too
-        else:
-            # If no specific type, clear everything as a safety measure
-            await self.clear()
-
-    # ... other handlers ...
-```
-
-## Cache Invalidation
-
-Invalidation is crucial for maintaining consistency. The `CacheStore` implements several invalidation methods:
-
-1.  **`delete(key)`**: Removes a single entry and cleans up its dependencies.
-2.  **`delete_many(keys)`**: Efficiently removes multiple entries.
-3.  **`invalidate_type(type_name)`**: Removes all cache entries associated with a specific entity or relation type using `_type_dependencies`. This is critical for handling schema changes.
-4.  **`invalidate_query(query_hash)`**: Removes cache entries for a specific query hash using `_query_dependencies`.
-5.  **`invalidate_dependencies(key)`**: This is the core cascading invalidation logic. When an entry (e.g., an entity) is invalidated, this method finds all other entries (e.g., relations involving the entity, query results depending on the entity) that depend on it using `_reverse_dependencies`, `_entity_relations`, etc., and removes them recursively.
-
-TTL expiration is handled automatically by `cachetools.TTLCache` if configured.
-
-## Integration with GraphContext
-
-### 1. Base Implementation
-
-```python
-class BaseGraphContext(GraphContext):
-    def __init__(self):
-        self.cache_manager = SchemaAwareCacheManager()
-        self._entity_types: Dict[str, EntityType] = {}
-        self._relation_types: Dict[str, RelationType] = {}
-```
-
-### 2. Operation Integration
-
-```python
-async def get_entity(self, entity_id: str) -> Optional[Entity]:
-    # Try cache
-    cached = await self.cache_manager.cache.get(
-        "get_entity",
-        entity_id=entity_id
+await graph_context.cache_manager.handle_event(
+    GraphEvent.SCHEMA_ENTITY_TYPE_MODIFIED,
+    EventContext(
+        operation="modify_entity_type",
+        result=person_type,
+        metadata={"type_name": "Person"}
     )
-    if cached:
-        return cached
+)
+```
 
-    # Get from backend and cache
-    entity = await self._get_entity_from_backend(entity_id)
-    if entity:
-        await self.cache_manager.handle_event(
-            GraphEvent.ENTITY_READ,
-            EventContext(operation="get_entity", result=entity)
-        )
-    return entity
+### Query Caching
+
+```python
+# Execute and cache query
+results = await graph_context.query({
+    "entity_type": "Person",
+    "conditions": [
+        {"field": "age", "operator": "gt", "value": 25}
+    ]
+})
+
+# Modify person type and invalidate query cache
+await graph_context.cache_manager.handle_event(
+    GraphEvent.SCHEMA_ENTITY_TYPE_MODIFIED,
+    EventContext(
+        operation="modify_entity_type",
+        metadata={"type_name": "Person"}
+    )
+)
 ```
 
 ## Deployment Scenarios
@@ -824,115 +741,7 @@ Note: These deployment diagrams are illustrative examples showing possible confi
        DB-->>Redis: Confirm
    ```
 
-## Performance Considerations
-
-### 1. Cache Key Design
-- Efficient key generation
-- Minimal string operations
-- Predictable key patterns
-
-### 2. Memory Management
-- Cache size limits
-- Dependency tracking overhead
-- Query result size considerations
-
-### 3. Invalidation Efficiency
-- Fast type-based lookup
-- Efficient dependency tracking
-- Minimal lock contention
-
-## Future Extensions
-
-### 1. Schema Versioning
-- Version hash per type
-- Version-aware cache keys
-- Migration support
-
-### 2. Advanced Caching Features
-- TTL support
-- Priority-based eviction
-- Partial cache invalidation
-
-### 3. Monitoring and Debugging
-- Cache hit/miss metrics
-- Invalidation tracking
-- Performance monitoring
-
-## Usage Examples
-
-### 1. Basic Entity Caching
-
-```python
-# Create and cache entity
-person = await graph_context.create_entity(
-    "Person",
-    {"name": "John Doe", "age": 30}
-)
-
-# Cached read
-person = await graph_context.get_entity(person.id)
-
-# Modify schema and invalidate cache
-person_type = graph_context._entity_types["Person"]
-person_type.properties["email"] = PropertyDefinition(
-    type=PropertyType.STRING,
-    required=True
-)
-
-await graph_context.cache_manager.handle_event(
-    GraphEvent.SCHEMA_ENTITY_TYPE_MODIFIED,
-    EventContext(
-        operation="modify_entity_type",
-        result=person_type,
-        metadata={"type_name": "Person"}
-    )
-)
-```
-
-### 2. Query Caching
-
-```python
-# Execute and cache query
-results = await graph_context.query({
-    "entity_type": "Person",
-    "conditions": [
-        {"field": "age", "operator": "gt", "value": 25}
-    ]
-})
-
-# Modify person type and invalidate query cache
-await graph_context.cache_manager.handle_event(
-    GraphEvent.SCHEMA_ENTITY_TYPE_MODIFIED,
-    EventContext(
-        operation="modify_entity_type",
-        metadata={"type_name": "Person"}
-    )
-)
-```
-
-## Best Practices
-
-1. **Event Handling**
-   - Always emit events for schema changes
-   - Include relevant metadata in events
-   - Handle event failures gracefully
-
-2. **Cache Management**
-   - Monitor cache size and hit rates
-   - Implement cache warming for critical data
-   - Regular cache maintenance
-
-3. **Type Dependencies**
-   - Track all relevant type dependencies
-   - Consider indirect dependencies
-   - Maintain clean dependency graphs
-
-4. **Error Handling**
-   - Graceful degradation on cache failures
-   - Clear error messages
-   - Automatic recovery mechanisms
-
-## Limitations
+## Limitations and Trade-offs
 
 1. **Current Limitations**
    - No schema versioning support
@@ -944,7 +753,7 @@ await graph_context.cache_manager.handle_event(
    - Invalidation granularity vs complexity
    - Event handling overhead
 
-## Next Steps
+## Future Enhancements
 
 1. **Short Term**
    - Implement basic monitoring
