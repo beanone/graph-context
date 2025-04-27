@@ -35,7 +35,9 @@ class SchemaValidator:
         self._entity_types = entity_types
         self._relation_types = relation_types
 
-    def validate_entity(self, entity_type: str, properties: dict[str, Any]) -> dict[str, Any]:
+    def validate_entity(
+        self, entity_type: str, properties: dict[str, Any]
+    ) -> dict[str, Any]:
         """
         Validate entity properties against the schema.
 
@@ -51,7 +53,9 @@ class SchemaValidator:
             SchemaError: If entity type is not registered
         """
         if entity_type not in self._entity_types:
-            raise SchemaError(f"Unknown entity type: {entity_type}", schema_type=entity_type)
+            raise SchemaError(
+                f"Unknown entity type: {entity_type}", schema_type=entity_type
+            )
 
         type_def = self._entity_types[entity_type]
         validated_props = {}
@@ -60,14 +64,18 @@ class SchemaValidator:
         for prop_name, prop_def in type_def.properties.items():
             if prop_name not in properties:
                 if prop_def.required:
-                    raise ValidationError(f"Missing required property: {prop_name}", field=prop_name)
+                    raise ValidationError(
+                        f"Missing required property: {prop_name}", field=prop_name
+                    )
                 if prop_def.default is not None:
                     validated_props[prop_name] = prop_def.default
                 continue
 
             # Validate property value
             try:
-                validated_props[prop_name] = validate_property_value(properties[prop_name], prop_def)
+                validated_props[prop_name] = validate_property_value(
+                    properties[prop_name], prop_def
+                )
             except ValidationError as e:
                 raise ValidationError(str(e), field=prop_name) from e
 
@@ -102,7 +110,9 @@ class SchemaValidator:
             SchemaError: If relation type is not registered
         """
         if relation_type not in self._relation_types:
-            raise SchemaError(f"Unknown relation type: {relation_type}", schema_type=relation_type)
+            raise SchemaError(
+                f"Unknown relation type: {relation_type}", schema_type=relation_type
+            )
 
         type_def = self._relation_types[relation_type]
 
@@ -114,7 +124,9 @@ class SchemaValidator:
             )
 
         if to_entity_type not in type_def.to_types:
-            raise ValidationError(f"Invalid to_entity_type: {to_entity_type}", field="to_entity_type")
+            raise ValidationError(
+                f"Invalid to_entity_type: {to_entity_type}", field="to_entity_type"
+            )
 
         # Validate properties if provided
         if properties is None:
@@ -126,14 +138,18 @@ class SchemaValidator:
         for prop_name, prop_def in type_def.properties.items():
             if prop_name not in properties:
                 if prop_def.required:
-                    raise ValidationError(f"Missing required property: {prop_name}", field=prop_name)
+                    raise ValidationError(
+                        f"Missing required property: {prop_name}", field=prop_name
+                    )
                 if prop_def.default is not None:
                     validated_props[prop_name] = prop_def.default
                 continue
 
             # Validate property value
             try:
-                validated_props[prop_name] = validate_property_value(properties[prop_name], prop_def)
+                validated_props[prop_name] = validate_property_value(
+                    properties[prop_name], prop_def
+                )
             except ValidationError as e:
                 raise ValidationError(str(e), field=prop_name) from e
 

@@ -50,7 +50,9 @@ class TestQueryManager:
         assert manager._events is mock_events
 
     @pytest.mark.asyncio
-    async def test_query_success(self, query_manager, mock_store, mock_events, sample_entities):
+    async def test_query_success(
+        self, query_manager, mock_store, mock_events, sample_entities
+    ):
         """Test query method successful execution."""
         query_spec = MagicMock(spec=QuerySpec)
         mock_store.query.return_value = sample_entities
@@ -58,11 +60,15 @@ class TestQueryManager:
         result = await query_manager.query(query_spec)
 
         mock_store.query.assert_called_once_with(query_spec)
-        mock_events.emit.assert_called_once_with(GraphEvent.QUERY_EXECUTED, query_spec=query_spec)
+        mock_events.emit.assert_called_once_with(
+            GraphEvent.QUERY_EXECUTED, query_spec=query_spec
+        )
         assert result == sample_entities
 
     @pytest.mark.asyncio
-    async def test_traverse_success(self, query_manager, mock_store, mock_events, sample_entities):
+    async def test_traverse_success(
+        self, query_manager, mock_store, mock_events, sample_entities
+    ):
         """Test traverse method successful execution."""
         start_entity = "entity-123"
         traversal_spec = MagicMock(spec=TraversalSpec)

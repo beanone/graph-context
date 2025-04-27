@@ -144,7 +144,9 @@ class InMemoryGraphStore(GraphStore, GraphLike):
         """Retrieve a relation by ID."""
         return self._get_relations().get(relation_id)
 
-    async def update_relation(self, relation_id: str, properties: Dict[str, Any]) -> bool:
+    async def update_relation(
+        self, relation_id: str, properties: Dict[str, Any]
+    ) -> bool:
         """Update an existing relation."""
         relations = self._get_relations()
         if relation_id not in relations:
@@ -183,7 +185,9 @@ class InMemoryGraphStore(GraphStore, GraphLike):
 
         # Filter by entity type if specified
         if "entity_type" in query_spec:
-            entities = {k: v for k, v in entities.items() if v.type == query_spec["entity_type"]}
+            entities = {
+                k: v for k, v in entities.items() if v.type == query_spec["entity_type"]
+            }
 
         # Apply property conditions if specified
         if "conditions" in query_spec:
@@ -196,7 +200,9 @@ class InMemoryGraphStore(GraphStore, GraphLike):
                     k: v
                     for k, v in entities.items()
                     if property_name in v.properties
-                    and self._evaluate_condition(v.properties[property_name], operator, value)
+                    and self._evaluate_condition(
+                        v.properties[property_name], operator, value
+                    )
                 }
 
         # Convert to list and apply offset/limit
@@ -210,7 +216,9 @@ class InMemoryGraphStore(GraphStore, GraphLike):
 
         return results
 
-    def _evaluate_condition(self, property_value: Any, operator: str, value: Any) -> bool:
+    def _evaluate_condition(
+        self, property_value: Any, operator: str, value: Any
+    ) -> bool:
         """Evaluate a query condition."""
         if operator == "eq":
             return property_value == value
@@ -232,7 +240,9 @@ class InMemoryGraphStore(GraphStore, GraphLike):
             return str(property_value).endswith(str(value))
         return False
 
-    async def traverse(self, start_entity: str, traversal_spec: Dict[str, Any]) -> List[Entity | TraversalPath]:
+    async def traverse(
+        self, start_entity: str, traversal_spec: Dict[str, Any]
+    ) -> List[Entity | TraversalPath]:
         """
         Traverse the graph starting from a given entity.
 
@@ -242,8 +252,8 @@ class InMemoryGraphStore(GraphStore, GraphLike):
                 - direction: Direction of traversal ("outbound", "inbound", or "any")
                 - relation_types: List of relation types to follow (empty for any)
                 - max_depth: Maximum traversal depth (default: no limit)
-                - include_start: Whether to include start entity in results (default: False)
-                - return_paths: Whether to return full paths instead of just entities (default: False)
+                - include_start: Whether to include start entity (default: False)
+                - return_paths: Return full paths or just entities (default: False)?
                 - strategy: Traversal strategy to use ("bfs" or "dfs", default: "bfs")
 
         Returns:

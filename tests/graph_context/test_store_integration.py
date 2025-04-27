@@ -97,7 +97,9 @@ class MockGraphStore(GraphStore):
         properties: Optional[dict[str, Any]] = None,
     ) -> str:
         """Mock create_relation method."""
-        self.method_calls.append(("create_relation", relation_type, from_entity, to_entity, properties))
+        self.method_calls.append(
+            ("create_relation", relation_type, from_entity, to_entity, properties)
+        )
         relation_id = f"r-{len(self.relations) + 1}"
         self.relations[relation_id] = Relation(
             id=relation_id,
@@ -115,7 +117,9 @@ class MockGraphStore(GraphStore):
         self.method_calls.append(("get_relation", relation_id))
         return self.relations.get(relation_id)
 
-    async def update_relation(self, relation_id: str, properties: dict[str, Any]) -> bool:
+    async def update_relation(
+        self, relation_id: str, properties: dict[str, Any]
+    ) -> bool:
         """Mock update_relation method."""
         self.method_calls.append(("update_relation", relation_id, properties))
         if relation_id in self.relations:
@@ -146,7 +150,9 @@ class MockGraphStore(GraphStore):
         self.method_calls.append(("query", query_spec))
         return list(self.entities.values())
 
-    async def traverse(self, start_entity: str, traversal_spec: dict[str, Any]) -> list[Entity]:
+    async def traverse(
+        self, start_entity: str, traversal_spec: dict[str, Any]
+    ) -> list[Entity]:
         """Mock traverse method."""
         self.method_calls.append(("traverse", start_entity, traversal_spec))
         return list(self.entities.values())
@@ -237,7 +243,10 @@ class TestBaseGraphContextStoreIntegration:
 
         # Update entity and verify delegation
         await context.update_entity(entity_id, {"name": "Alicia"})
-        assert any(call[0] == "update_entity" and call[1] == entity_id for call in store.method_calls)
+        assert any(
+            call[0] == "update_entity" and call[1] == entity_id
+            for call in store.method_calls
+        )
 
         # Delete entity and verify delegation
         await context.delete_entity(entity_id)
@@ -289,7 +298,10 @@ class TestBaseGraphContextStoreIntegration:
         # Create relation and verify delegation
         relation_id = await context.create_relation("Authored", person_id, doc_id)
         assert any(
-            call[0] == "create_relation" and call[1] == "Authored" and call[2] == person_id and call[3] == doc_id
+            call[0] == "create_relation"
+            and call[1] == "Authored"
+            and call[2] == person_id
+            and call[3] == doc_id
             for call in store.method_calls
         )
 
@@ -299,7 +311,10 @@ class TestBaseGraphContextStoreIntegration:
 
         # Update relation and verify delegation
         await context.update_relation(relation_id, {"year": 2023})
-        assert any(call[0] == "update_relation" and call[1] == relation_id for call in store.method_calls)
+        assert any(
+            call[0] == "update_relation" and call[1] == relation_id
+            for call in store.method_calls
+        )
 
         # Delete relation and verify delegation
         await context.delete_relation(relation_id)
@@ -340,7 +355,10 @@ class TestBaseGraphContextStoreIntegration:
         # Traverse and verify delegation
         traversal_spec = {"max_depth": 2, "direction": "outbound"}
         await context.traverse(entity_id, traversal_spec)
-        assert any(call[0] == "traverse" and call[1] == entity_id for call in store.method_calls)
+        assert any(
+            call[0] == "traverse" and call[1] == entity_id
+            for call in store.method_calls
+        )
 
         # Commit transaction
         await context.commit_transaction()

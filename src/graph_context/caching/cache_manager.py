@@ -232,7 +232,9 @@ class CacheManager:
         # Cache the result if we have one
         if result:
             logger.debug("Storing in cache: %s", query_hash)
-            entry = CacheEntry(value=result, created_at=datetime.now(UTC), query_hash=query_hash)
+            entry = CacheEntry(
+                value=result, created_at=datetime.now(UTC), query_hash=query_hash
+            )
             await store.set(query_hash, entry)
 
         return result

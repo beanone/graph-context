@@ -17,10 +17,18 @@ class CacheStoreManager:
         Args:
             config: Cache configuration containing sizes and TTLs for different stores
         """
-        self.entity_store = CacheStore(maxsize=config.entity_cache_size, ttl=config.entity_cache_ttl)
-        self.relation_store = CacheStore(maxsize=config.relation_cache_size, ttl=config.relation_cache_ttl)
-        self.query_store = CacheStore(maxsize=config.query_cache_size, ttl=config.query_cache_ttl)
-        self.traversal_store = CacheStore(maxsize=config.traversal_cache_size, ttl=config.traversal_cache_ttl)
+        self.entity_store = CacheStore(
+            maxsize=config.entity_cache_size, ttl=config.entity_cache_ttl
+        )
+        self.relation_store = CacheStore(
+            maxsize=config.relation_cache_size, ttl=config.relation_cache_ttl
+        )
+        self.query_store = CacheStore(
+            maxsize=config.query_cache_size, ttl=config.query_cache_ttl
+        )
+        self.traversal_store = CacheStore(
+            maxsize=config.traversal_cache_size, ttl=config.traversal_cache_ttl
+        )
 
     def get_entity_store(self) -> CacheStore:
         """Get the entity cache store.

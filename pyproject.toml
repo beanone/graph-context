@@ -46,7 +46,7 @@ Homepage = "https://github.com/beanone/graph-context"
 Repository = "https://github.com/beanone/graph-context"
 
 [tool.ruff]
-line-length = 120
+line-length = 88
 target-version = "py310"
 select = [
     "E",   # pycodestyle errors

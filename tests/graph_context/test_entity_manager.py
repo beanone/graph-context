@@ -81,7 +81,9 @@ class TestEntityManager:
 
     def test_init(self, mock_store, mock_events, mock_validator, mock_transaction):
         """Test EntityManager initialization."""
-        manager = EntityManager(mock_store, mock_events, mock_validator, mock_transaction)
+        manager = EntityManager(
+            mock_store, mock_events, mock_validator, mock_transaction
+        )
         assert manager._store is mock_store
         assert manager._events is mock_events
         assert manager._validator is mock_validator
@@ -131,9 +133,13 @@ class TestEntityManager:
         result = await entity_manager.create(entity_type, entity_properties)
 
         mock_transaction.check_transaction.assert_called_once()
-        mock_validator.validate_entity.assert_called_once_with(entity_type, entity_properties)
+        mock_validator.validate_entity.assert_called_once_with(
+            entity_type, entity_properties
+        )
         mock_store.create_entity.assert_called_once_with(entity_type, validated_props)
-        mock_events.emit.assert_called_once_with(GraphEvent.ENTITY_WRITE, entity_id=entity_id, entity_type=entity_type)
+        mock_events.emit.assert_called_once_with(
+            GraphEvent.ENTITY_WRITE, entity_id=entity_id, entity_type=entity_type
+        )
         assert result == entity_id
 
     @pytest.mark.asyncio
@@ -159,7 +165,9 @@ class TestEntityManager:
 
         mock_transaction.check_transaction.assert_called_once()
         mock_store.get_entity.assert_called_once_with(entity_id)
-        mock_validator.validate_entity.assert_called_once_with(sample_entity.type, entity_properties)
+        mock_validator.validate_entity.assert_called_once_with(
+            sample_entity.type, entity_properties
+        )
         mock_store.update_entity.assert_called_once_with(entity_id, validated_props)
         mock_events.emit.assert_called_once_with(
             GraphEvent.ENTITY_WRITE, entity_id=entity_id, entity_type=sample_entity.type
@@ -215,7 +223,9 @@ class TestEntityManager:
 
         mock_transaction.check_transaction.assert_called_once()
         mock_store.get_entity.assert_called_once_with(entity_id)
-        mock_validator.validate_entity.assert_called_once_with(sample_entity.type, entity_properties)
+        mock_validator.validate_entity.assert_called_once_with(
+            sample_entity.type, entity_properties
+        )
         mock_store.update_entity.assert_called_once_with(entity_id, validated_props)
         # Event should not be emitted on failed update
         mock_events.emit.assert_not_called()
@@ -300,7 +310,9 @@ class TestEntityManager:
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_delete_entity_not_found(self, entity_manager, mock_store, mock_transaction, mock_events):
+    async def test_delete_entity_not_found(
+        self, entity_manager, mock_store, mock_transaction, mock_events
+    ):
         """Test delete method when entity doesn't exist."""
         entity_id = "nonexistent"
         mock_store.get_entity.return_value = None

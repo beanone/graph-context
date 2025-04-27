@@ -161,10 +161,14 @@ async def test_create_relation(base_context):
     properties = {"label": "test"}
 
     # Call the method
-    await base_context.create_relation(relation_type, from_entity, to_entity, properties)
+    await base_context.create_relation(
+        relation_type, from_entity, to_entity, properties
+    )
 
     # Verify delegation
-    base_context._relation_manager.create.assert_called_once_with(relation_type, from_entity, to_entity, properties)
+    base_context._relation_manager.create.assert_called_once_with(
+        relation_type, from_entity, to_entity, properties
+    )
 
 
 @pytest.mark.asyncio
@@ -179,7 +183,9 @@ async def test_update_relation(base_context):
     await base_context.update_relation(relation_id, properties)
 
     # Verify delegation
-    base_context._relation_manager.update.assert_called_once_with(relation_id, properties)
+    base_context._relation_manager.update.assert_called_once_with(
+        relation_id, properties
+    )
 
 
 @pytest.mark.asyncio
@@ -223,7 +229,9 @@ async def test_traverse(base_context):
     await base_context.traverse(start_entity, traversal_spec)
 
     # Verify delegation
-    base_context._query_manager.traverse.assert_called_once_with(start_entity, traversal_spec)
+    base_context._query_manager.traverse.assert_called_once_with(
+        start_entity, traversal_spec
+    )
 
 
 # Test validation methods
@@ -238,7 +246,9 @@ def test_validate_entity(base_context):
     base_context.validate_entity(entity_type, properties)
 
     # Verify delegation
-    base_context._validator.validate_entity.assert_called_once_with(entity_type, properties)
+    base_context._validator.validate_entity.assert_called_once_with(
+        entity_type, properties
+    )
 
 
 def test_validate_relation(base_context):
@@ -251,7 +261,9 @@ def test_validate_relation(base_context):
     properties = {"since": 2020}
 
     # Call the method
-    base_context.validate_relation(relation_type, from_entity_type, to_entity_type, properties)
+    base_context.validate_relation(
+        relation_type, from_entity_type, to_entity_type, properties
+    )
 
     # Verify delegation
     base_context._validator.validate_relation.assert_called_once_with(
@@ -337,7 +349,9 @@ async def test_register_relation_type(base_context):
     base_context._entity_types["Person"] = person_type
 
     # Create relation type
-    relation_type = RelationType(name="knows", from_types=["Person"], to_types=["Person"])
+    relation_type = RelationType(
+        name="knows", from_types=["Person"], to_types=["Person"]
+    )
 
     # Call the method
     await base_context.register_relation_type(relation_type)
@@ -354,7 +368,9 @@ async def test_register_relation_type(base_context):
 async def test_register_relation_type_unknown_entity(base_context):
     """Test register_relation_type with unknown entity types."""
     # Create relation type with unknown entity
-    relation_type = RelationType(name="knows", from_types=["UnknownType"], to_types=["Person"])
+    relation_type = RelationType(
+        name="knows", from_types=["UnknownType"], to_types=["Person"]
+    )
 
     # Call the method
     with pytest.raises(SchemaError) as exc_info:

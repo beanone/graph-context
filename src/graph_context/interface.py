@@ -146,7 +146,9 @@ class GraphContext(ABC):
         pass
 
     @abstractmethod
-    async def update_relation(self, relation_id: str, properties: dict[str, Any]) -> Relation | None:
+    async def update_relation(
+        self, relation_id: str, properties: dict[str, Any]
+    ) -> Relation | None:
         """
         Update an existing relation.
 
@@ -182,7 +184,9 @@ class GraphContext(ABC):
         pass
 
     @abstractmethod
-    async def traverse(self, start_entity: str, traversal_spec: TraversalSpec) -> list[Entity]:
+    async def traverse(
+        self, start_entity: str, traversal_spec: TraversalSpec
+    ) -> list[Entity]:
         """
         Traverse the graph starting from a given entity.
 

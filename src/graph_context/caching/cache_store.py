@@ -270,15 +270,21 @@ class CacheStore:
         elif key.startswith("relation:"):
             # When invalidating a relation, also invalidate related entity caches
             for entity_id in self._relation_entities.get(key, set()):
-                keys_to_invalidate.update(self._reverse_dependencies.get(entity_id, set()))
+                keys_to_invalidate.update(
+                    self._reverse_dependencies.get(entity_id, set())
+                )
 
         # Add affected query results
         entry = await self.get(key)
         if entry:
             if entry.entity_type:
-                keys_to_invalidate.update(self._type_dependencies.get(entry.entity_type, set()))
+                keys_to_invalidate.update(
+                    self._type_dependencies.get(entry.entity_type, set())
+                )
             if entry.relation_type:
-                keys_to_invalidate.update(self._type_dependencies.get(entry.relation_type, set()))
+                keys_to_invalidate.update(
+                    self._type_dependencies.get(entry.relation_type, set())
+                )
 
         # Delete all affected entries
         await self.delete_many(keys_to_invalidate)

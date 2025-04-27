@@ -46,14 +46,16 @@ def validate_string(value: Any, constraints: Optional[dict[str, Any]] = None) ->
     if constraints:
         if "min_length" in constraints and len(value) < constraints["min_length"]:
             raise ValidationError(
-                f"min_length constraint: String length " f"must be at least {constraints['min_length']}",
+                f"min_length constraint: String length "
+                f"must be at least {constraints['min_length']}",
                 value=value,
                 constraint="min_length",
             )
 
         if "max_length" in constraints and len(value) > constraints["max_length"]:
             raise ValidationError(
-                f"max_length constraint: String length must " f"be at most {constraints['max_length']}",
+                f"max_length constraint: String length must "
+                f"be at most {constraints['max_length']}",
                 value=value,
                 constraint="max_length",
             )
@@ -89,7 +91,9 @@ def validate_number(
     """
     if property_type == PropertyType.INTEGER:
         if not isinstance(value, int):
-            raise ValidationError("Value must be an integer", value=value, constraint="type")
+            raise ValidationError(
+                "Value must be an integer", value=value, constraint="type"
+            )
     elif property_type == PropertyType.FLOAT:
         value = _validate_float_value(value)
 
@@ -117,9 +121,13 @@ def _validate_float_value(value):
     value = float(value)
     # Validate special float values
     if math.isnan(value):
-        raise ValidationError("NaN values are not allowed", value=value, constraint="type")
+        raise ValidationError(
+            "NaN values are not allowed", value=value, constraint="type"
+        )
     if math.isinf(value):
-        raise ValidationError("Infinite values are not allowed", value=value, constraint="type")
+        raise ValidationError(
+            "Infinite values are not allowed", value=value, constraint="type"
+        )
 
     return value
 
@@ -142,7 +150,9 @@ def validate_boolean(value: Any) -> bool:
     return value
 
 
-def validate_datetime(value: Any, constraints: Optional[dict[str, Any]] = None) -> datetime:
+def validate_datetime(
+    value: Any, constraints: Optional[dict[str, Any]] = None
+) -> datetime:
     """
     Validate a datetime value against its constraints.
 
@@ -160,10 +170,14 @@ def validate_datetime(value: Any, constraints: Optional[dict[str, Any]] = None) 
         try:
             value = datetime.fromisoformat(value)
         except ValueError as e:
-            raise ValidationError("Invalid datetime format", value=value, constraint="format") from e
+            raise ValidationError(
+                "Invalid datetime format", value=value, constraint="format"
+            ) from e
 
     if not isinstance(value, datetime):
-        raise ValidationError("Value must be a datetime", value=value, constraint="type")
+        raise ValidationError(
+            "Value must be a datetime", value=value, constraint="type"
+        )
 
     if constraints:
         if "min_date" in constraints and value < constraints["min_date"]:
@@ -200,7 +214,9 @@ def validate_uuid(value: Any) -> UUID:
         try:
             value = UUID(value)
         except ValueError as e:
-            raise ValidationError("Invalid UUID format", value=value, constraint="format") from e
+            raise ValidationError(
+                "Invalid UUID format", value=value, constraint="format"
+            ) from e
 
     if not isinstance(value, UUID):
         raise ValidationError("Value must be a UUID", value=value, constraint="type")
@@ -208,7 +224,9 @@ def validate_uuid(value: Any) -> UUID:
     return value
 
 
-def validate_list(value: Any, constraints: Optional[dict[str, Any]] = None) -> list[Any]:
+def validate_list(
+    value: Any, constraints: Optional[dict[str, Any]] = None
+) -> list[Any]:
     """
     Validate a list value against its constraints.
 
@@ -228,14 +246,16 @@ def validate_list(value: Any, constraints: Optional[dict[str, Any]] = None) -> l
     if constraints:
         if "min_items" in constraints and len(value) < constraints["min_items"]:
             raise ValidationError(
-                f"min_items constraint: List must have at " f"least {constraints['min_items']} items",
+                f"min_items constraint: List must have at "
+                f"least {constraints['min_items']} items",
                 value=value,
                 constraint="min_items",
             )
 
         if "max_items" in constraints and len(value) > constraints["max_items"]:
             raise ValidationError(
-                f"max_items constraint: List must have " f"at most {constraints['max_items']} items",
+                f"max_items constraint: List must have "
+                f"at most {constraints['max_items']} items",
                 value=value,
                 constraint="max_items",
             )
@@ -247,7 +267,9 @@ def validate_list(value: Any, constraints: Optional[dict[str, Any]] = None) -> l
                 try:
                     validator = _PROPERTY_VALIDATORS.get(item_type)
                     if validator is None:
-                        raise ValidationError(f"Unsupported property type: {item_type}", constraint="type")
+                        raise ValidationError(
+                            f"Unsupported property type: {item_type}", constraint="type"
+                        )
                     value[i] = validator(item, item_constraints)
                 except ValidationError as e:
                     raise ValidationError(
@@ -259,7 +281,9 @@ def validate_list(value: Any, constraints: Optional[dict[str, Any]] = None) -> l
     return value
 
 
-def validate_dict(value: Any, constraints: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+def validate_dict(
+    value: Any, constraints: Optional[dict[str, Any]] = None
+) -> dict[str, Any]:
     """
     Validate a dictionary value against its constraints.
 
@@ -274,7 +298,9 @@ def validate_dict(value: Any, constraints: Optional[dict[str, Any]] = None) -> d
         ValidationError: If validation fails
     """
     if not isinstance(value, dict):
-        raise ValidationError("Value must be a dictionary", value=value, constraint="type")
+        raise ValidationError(
+            "Value must be a dictionary", value=value, constraint="type"
+        )
 
     if constraints:
         # Check for additional properties if specified
@@ -311,7 +337,9 @@ def _validate_constraints(value, constraints):
             try:
                 validator = _PROPERTY_VALIDATORS.get(prop_type)
                 if validator is None:
-                    raise ValidationError(f"Unsupported property type: {prop_type}", constraint="type")
+                    raise ValidationError(
+                        f"Unsupported property type: {prop_type}", constraint="type"
+                    )
                 value[prop_name] = validator(value[prop_name], prop_constraints)
             except ValidationError as e:
                 raise ValidationError(
@@ -338,15 +366,21 @@ def validate_property_value(value: Any, property_def: PropertyDefinition) -> Any
     """
     if value is None:
         if property_def.required:
-            raise ValidationError("required constraint: Property value is required", constraint="required")
+            raise ValidationError(
+                "required constraint: Property value is required", constraint="required"
+            )
         return property_def.default
 
     try:
         validator = _PROPERTY_VALIDATORS.get(property_def.type)
         if validator is None:
-            raise ValidationError(f"Unsupported property type: {property_def.type}", constraint="type")
+            raise ValidationError(
+                f"Unsupported property type: {property_def.type}", constraint="type"
+            )
         return validator(value, property_def.constraints)
     except ValidationError:
         raise
     except Exception as e:
-        raise ValidationError(f"Validation failed: {e!s}", value=value, constraint="type") from e
+        raise ValidationError(
+            f"Validation failed: {e!s}", value=value, constraint="type"
+        ) from e

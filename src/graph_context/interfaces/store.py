@@ -54,7 +54,9 @@ class GraphStore(ABC):
         pass
 
     @abstractmethod
-    async def update_relation(self, relation_id: str, properties: dict[str, Any]) -> bool:
+    async def update_relation(
+        self, relation_id: str, properties: dict[str, Any]
+    ) -> bool:
         """Update an existing relation."""
         pass
 
@@ -69,7 +71,9 @@ class GraphStore(ABC):
         pass
 
     @abstractmethod
-    async def traverse(self, start_entity: str, traversal_spec: dict[str, Any]) -> list[Entity]:
+    async def traverse(
+        self, start_entity: str, traversal_spec: dict[str, Any]
+    ) -> list[Entity]:
         """Traverse the graph starting from a given entity."""
         pass
 

@@ -103,14 +103,18 @@ class TestRelationManager:
 
     def test_init(self, mock_store, mock_events, mock_validator, mock_transaction):
         """Test RelationManager initialization."""
-        manager = RelationManager(mock_store, mock_events, mock_validator, mock_transaction)
+        manager = RelationManager(
+            mock_store, mock_events, mock_validator, mock_transaction
+        )
         assert manager._store is mock_store
         assert manager._events is mock_events
         assert manager._validator is mock_validator
         assert manager._transaction is mock_transaction
 
     @pytest.mark.asyncio
-    async def test_get_relation_found(self, relation_manager, mock_store, sample_relation):
+    async def test_get_relation_found(
+        self, relation_manager, mock_store, sample_relation
+    ):
         """Test get method when relation exists."""
         relation_id = "relation-123"
         mock_store.get_relation.return_value = sample_relation
@@ -154,7 +158,9 @@ class TestRelationManager:
         mock_validator.validate_relation.return_value = validated_props
         mock_store.create_relation.return_value = relation_id
 
-        result = await relation_manager.create(relation_type, from_entity, to_entity, properties)
+        result = await relation_manager.create(
+            relation_type, from_entity, to_entity, properties
+        )
 
         mock_transaction.check_transaction.assert_called_once()
         mock_store.get_entity.assert_any_call(from_entity)
@@ -162,7 +168,9 @@ class TestRelationManager:
         mock_validator.validate_relation.assert_called_once_with(
             relation_type, sample_from_entity.type, sample_to_entity.type, properties
         )
-        mock_store.create_relation.assert_called_once_with(relation_type, from_entity, to_entity, validated_props)
+        mock_store.create_relation.assert_called_once_with(
+            relation_type, from_entity, to_entity, validated_props
+        )
         mock_events.emit.assert_called_once_with(
             GraphEvent.RELATION_WRITE,
             relation_id=relation_id,
@@ -189,8 +197,12 @@ class TestRelationManager:
 
         mock_store.get_entity.return_value = None
 
-        with pytest.raises(EntityNotFoundError, match=f"From entity not found: {from_entity}"):
-            await relation_manager.create(relation_type, from_entity, to_entity, properties)
+        with pytest.raises(
+            EntityNotFoundError, match=f"From entity not found: {from_entity}"
+        ):
+            await relation_manager.create(
+                relation_type, from_entity, to_entity, properties
+            )
 
         mock_transaction.check_transaction.assert_called_once()
         mock_store.get_entity.assert_called_once_with(from_entity)
@@ -216,8 +228,12 @@ class TestRelationManager:
 
         mock_store.get_entity.side_effect = [sample_from_entity, None]
 
-        with pytest.raises(EntityNotFoundError, match=f"To entity not found: {to_entity}"):
-            await relation_manager.create(relation_type, from_entity, to_entity, properties)
+        with pytest.raises(
+            EntityNotFoundError, match=f"To entity not found: {to_entity}"
+        ):
+            await relation_manager.create(
+                relation_type, from_entity, to_entity, properties
+            )
 
         mock_transaction.check_transaction.assert_called_once()
         assert mock_store.get_entity.call_count == 2
@@ -439,7 +455,9 @@ class TestRelationManager:
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_delete_relation_not_found(self, relation_manager, mock_store, mock_transaction, mock_events):
+    async def test_delete_relation_not_found(
+        self, relation_manager, mock_store, mock_transaction, mock_events
+    ):
         """Test delete method when relation doesn't exist."""
         relation_id = "nonexistent"
         mock_store.get_relation.return_value = None
