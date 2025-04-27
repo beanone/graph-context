@@ -1028,3 +1028,235 @@ Your custom store implementation should handle:
 - Error handling
 - Connection management
 - Resource cleanup
+
+## Dynamic Entity Discovery Example
+
+This example demonstrates how to discover and register entity types dynamically from unstructured text:
+
+```python
+from typing import Dict, List, Set
+import re
+from dataclasses import dataclass
+from graph_context import BaseGraphContext
+from graph_context.types import (
+    EntityType,
+    PropertyDefinition,
+    QuerySpec,
+    QueryCondition,
+    QueryOperator
+)
+
+@dataclass
+class DiscoveredEntity:
+    text: str
+    type: str
+    properties: Dict[str, str]
+    start_pos: int
+    end_pos: int
+
+class DocumentGraphBuilder:
+    def __init__(self):
+        self.context = BaseGraphContext()
+        self.registered_types: Set[str] = set()
+
+    async def discover_entity_types(self, text: str) -> List[DiscoveredEntity]:
+        """Discover entities and their types from text using NLP or pattern matching."""
+        # This is a simplified example. In reality, you'd use NLP libraries
+        # like spaCy, NLTK, or custom ML models for entity recognition
+
+        # Example patterns (simplified for demonstration)
+        patterns = {
+            "Person": r"\b[A-Z][a-z]+ [A-Z][a-z]+\b",  # Simple name pattern
+            "Organization": r"\b[A-Z][a-z]+ (Inc\.|LLC|Corp\.|Ltd\.)\b",
+            "Location": r"\b[A-Z][a-z]+(?: [A-Z][a-z]+)* (?:Street|Avenue|Road|City|State)\b",
+            "Date": r"\b\d{1,2}/\d{1,2}/\d{2,4}\b"
+        }
+
+        entities = []
+        for entity_type, pattern in patterns.items():
+            for match in re.finditer(pattern, text):
+                # Extract properties based on entity type
+                properties = self._extract_properties(match.group(), entity_type)
+
+                entities.append(DiscoveredEntity(
+                    text=match.group(),
+                    type=entity_type,
+                    properties=properties,
+                    start_pos=match.start(),
+                    end_pos=match.end()
+                ))
+
+        return entities
+
+    def _extract_properties(self, text: str, entity_type: str) -> Dict[str, str]:
+        """Extract properties based on entity type and text."""
+        properties = {"text": text}
+
+        if entity_type == "Person":
+            # Split name into components
+            parts = text.split()
+            if len(parts) >= 2:
+                properties["first_name"] = parts[0]
+                properties["last_name"] = parts[-1]
+
+        elif entity_type == "Organization":
+            # Extract company type
+            if "Inc." in text:
+                properties["company_type"] = "Incorporated"
+            elif "LLC" in text:
+                properties["company_type"] = "Limited Liability Company"
+
+        elif entity_type == "Date":
+            # Parse date components
+            month, day, year = text.split("/")
+            properties["month"] = month
+            properties["day"] = day
+            properties["year"] = year
+
+        return properties
+
+    async def register_entity_type(self, entity_type: str, properties: Dict[str, str]):
+        """Register an entity type if not already registered."""
+        if entity_type in self.registered_types:
+            return
+
+        # Convert discovered properties to PropertyDefinition
+        property_defs = {
+            "text": PropertyDefinition(type="string", required=True)
+        }
+
+        # Add type-specific properties
+        for prop_name, prop_value in properties.items():
+            if prop_name != "text":
+                # Infer property type from value
+                prop_type = "string"
+                if prop_value.isdigit():
+                    prop_type = "integer"
+                elif prop_value.replace(".", "").isdigit():
+                    prop_type = "float"
+
+                property_defs[prop_name] = PropertyDefinition(
+                    type=prop_type,
+                    required=False
+                )
+
+        # Register the entity type
+        await self.context.register_entity_type(
+            EntityType(
+                name=entity_type,
+                properties=property_defs
+            )
+        )
+        self.registered_types.add(entity_type)
+
+    async def discover_relations(self, text: str, entities: List[DiscoveredEntity]) -> List[tuple]:
+        """Discover relations between entities."""
+        relations = []
+
+        # Example relation patterns (simplified)
+        relation_patterns = {
+            "WORKS_AT": r"works at",
+            "LIVES_IN": r"lives in",
+            "BORN_ON": r"born on"
+        }
+
+        for pattern, relation_type in relation_patterns.items():
+            for match in re.finditer(pattern, text):
+                # Find entities before and after the relation
+                before_entities = [e for e in entities if e.end_pos <= match.start()]
+                after_entities = [e for e in entities if e.start_pos >= match.end()]
+
+                if before_entities and after_entities:
+                    # In our implementation, relations are always from source to target
+                    # So we need to determine the correct direction based on the relation type
+                    if relation_type in ["WORKS_AT", "LIVES_IN", "BORN_ON"]:
+                        source = before_entities[-1]  # Person
+                        target = after_entities[0]    # Organization/Location/Date
+                    else:
+                        source = after_entities[0]
+                        target = before_entities[-1]
+
+                    relations.append((
+                        source,
+                        relation_type,
+                        target,
+                        {"text": match.group()}
+                    ))
+
+        return relations
+
+    async def build_graph_from_text(self, text: str):
+        """Build a graph from text by discovering entities and relations."""
+        # Discover entities
+        entities = await self.discover_entity_types(text)
+
+        # Register entity types and create entities
+        entity_map = {}  # Map discovered entities to their IDs
+        async with self.context.begin_transaction():
+            for entity in entities:
+                # Register entity type if needed
+                await self.register_entity_type(entity.type, entity.properties)
+
+                # Create entity
+                entity_id = await self.context.create_entity(
+                    entity.type,
+                    entity.properties
+                )
+                entity_map[entity] = entity_id
+
+            # Discover and create relations
+            relations = await self.discover_relations(text, entities)
+            for source, relation_type, target, properties in relations:
+                await self.context.create_relation(
+                    relation_type,
+                    entity_map[source],
+                    entity_map[target],
+                    properties
+                )
+
+# Example usage
+async def process_document():
+    builder = DocumentGraphBuilder()
+
+    # Example document
+    text = """
+    John Smith works at Acme Inc. He lives in New York City.
+    He was born on 01/15/1980. His colleague Jane Doe also works at Acme Inc.
+    """
+
+    await builder.build_graph_from_text(text)
+
+    # Query the graph
+    async with builder.context.begin_transaction():
+        # Create a query spec to find people who work at Acme Inc.
+        query_spec = QuerySpec(
+            entity_type="Person",
+            conditions=[
+                QueryCondition(
+                    field="text",
+                    operator=QueryOperator.CONTAINS,
+                    value="Acme Inc."
+                )
+            ]
+        )
+
+        # Execute the query
+        entities = await builder.context.query(query_spec)
+
+        for entity in entities:
+            print(f"Found person: {entity.properties['text']}")
+
+# Run the example
+import asyncio
+asyncio.run(process_document())
+```
+
+This example shows how to:
+1. Discover entities and their types from text
+2. Dynamically register entity types as they're discovered
+3. Extract and infer properties from text
+4. Discover relations between entities
+5. Build a graph from unstructured text
+6. Query the resulting graph
+
+The example uses pattern matching for simplicity, but in a real application, you would use NLP libraries like spaCy or custom ML models for more accurate entity recognition.
