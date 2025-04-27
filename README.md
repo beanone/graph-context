@@ -17,6 +17,7 @@ A flexible and type-safe graph database abstraction layer for Python, providing 
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Core Concepts](#core-concepts)
+  - [Event System](#event-system)
   - [Entities](#entities)
   - [Relations](#relations)
   - [Transactions](#transactions)
@@ -25,6 +26,7 @@ A flexible and type-safe graph database abstraction layer for Python, providing 
   - [Component Overview](#component-overview)
   - [Class Structure](#class-structure)
   - [Transaction Flow](#transaction-flow)
+  - [Event System Architecture](#event-system-architecture)
   - [Validation Pipeline](#validation-pipeline)
 - [API Reference](#api-reference)
   - [Entity Operations](#entity-operations)
@@ -38,6 +40,7 @@ A flexible and type-safe graph database abstraction layer for Python, providing 
   - [Guidelines](#guidelines)
 - [License](#license)
 - [Acknowledgments](#acknowledgments)
+- [Documentation](#documentation)
 
 - 🔍 **Type-Safe**: Full type hints and runtime type checking
 - 🔒 **Schema Validation**: Strict schema validation for entities and relations
@@ -46,6 +49,11 @@ A flexible and type-safe graph database abstraction layer for Python, providing 
 - 🌐 **Graph Operations**: Comprehensive graph traversal and query capabilities
 - 🔌 **Extensible**: Easy to implement custom storage backends
 - 🧪 **Well-Tested**: High test coverage and comprehensive test suite
+- 📡 **Event System**: Sophisticated pub/sub system with metadata tracking and bulk operation support
+- 💾 **Caching Support**: Flexible caching system with various backend options
+- 🛡️ **Error Handling**: Comprehensive error handling with detailed error types
+- 📊 **Bulk Operations**: Efficient bulk entity and relation operations
+- 🔄 **Metadata Tracking**: Detailed operation metadata for debugging and monitoring
 
 ## Installation
 
@@ -122,6 +130,28 @@ if __name__ == "__main__":
 
 ## Core Concepts
 
+### Event System
+
+The graph-context library includes a sophisticated event system that allows you to:
+- Subscribe to graph operations (entity/relation CRUD, queries, traversals)
+- Track detailed operation metadata
+- Handle bulk operations efficiently
+- Implement cross-cutting concerns like caching and logging
+
+Example usage:
+
+```python
+from graph_context import GraphEvent
+
+async def log_entity_changes(event_context):
+    metadata = event_context.metadata
+    print(f"Entity changed: {metadata.entity_type} at {metadata.timestamp}")
+    print(f"Operation ID: {metadata.operation_id}")
+
+# Subscribe to entity write events
+await context.event_system.subscribe(GraphEvent.ENTITY_WRITE, log_entity_changes)
+```
+
 ### Entities
 
 Entities are nodes in the graph with:
@@ -144,6 +174,42 @@ All operations can be wrapped in transactions:
 - Isolation of changes
 - Atomic operations
 - Consistent state
+- Event emission for transaction lifecycle
+- Automatic metadata tracking
+
+Example with error handling:
+
+```python
+try:
+    await context.begin_transaction()
+
+    # Create entities with validation
+    try:
+        alice_id = await context.create_entity(
+            entity_type="Person",
+            properties={"name": "Alice", "age": 30}
+        )
+    except ValidationError as e:
+        print(f"Validation failed: {e.detail}")
+        await context.rollback_transaction()
+        return
+
+    # Create relation with type checking
+    try:
+        await context.create_relation(
+            relation_type="KNOWS",
+            from_entity=alice_id,
+            to_entity=bob_id
+        )
+    except (EntityNotFoundError, SchemaError) as e:
+        print(f"Relation creation failed: {e}")
+        await context.rollback_transaction()
+        return
+
+    await context.commit_transaction()
+except TransactionError as e:
+    print(f"Transaction error: {e}")
+    await context.rollback_transaction()
 
 ### Validation
 
@@ -165,19 +231,30 @@ graph TD
     C --> D[Custom Implementation]
     C --> E[TestGraphContext]
 
+    C --> F[Event System]
+    C --> G[Cache Layer]
+    F --> H[Event Handlers]
+    G --> I[Cache Backend]
+
     subgraph "Core Components"
         B
         C
+        F
+        G
     end
 
     subgraph "Implementations"
         D
         E
+        H
+        I
     end
 
     style A fill:#f9f,stroke:#333,stroke-width:2px
     style B fill:#bbf,stroke:#333,stroke-width:2px
     style C fill:#dfd,stroke:#333,stroke-width:2px
+    style F fill:#ffd,stroke:#333,stroke-width:2px
+    style G fill:#dff,stroke:#333,stroke-width:2px
 ```
 
 ### Class Structure
@@ -198,21 +275,44 @@ classDiagram
         +delete_relation()
         +query()
         +traverse()
+        +begin_transaction()
+        +commit_transaction()
+        +rollback_transaction()
     }
 
     class BaseGraphContext {
         #_entity_types: Dict
         #_relation_types: Dict
         #_in_transaction: bool
+        #_event_system: EventSystem
+        #_cache_layer: CacheLayer
         +register_entity_type()
         +register_relation_type()
         +validate_entity()
         +validate_relation()
         #_check_transaction()
+        #_emit_event()
+    }
+
+    class EventSystem {
+        -_handlers: Dict
+        -_enabled: bool
+        +subscribe()
+        +unsubscribe()
+        +emit()
+        +enable()
+        +disable()
+    }
+
+    class EventContext {
+        +event: GraphEvent
+        +metadata: EventMetadata
+        +data: Dict
     }
 
     class CustomImplementation {
         -storage_backend
+        -cache_backend
         +initialize()
         +cleanup()
         +create_entity()
@@ -222,6 +322,8 @@ classDiagram
 
     GraphContext <|-- BaseGraphContext
     BaseGraphContext <|-- CustomImplementation
+    BaseGraphContext --> EventSystem
+    EventSystem --> EventContext
 ```
 
 ### Transaction Flow
@@ -230,26 +332,72 @@ classDiagram
 sequenceDiagram
     participant C as Client
     participant G as GraphContext
+    participant E as Event System
     participant T as Transaction Manager
     participant S as Storage
 
     C->>G: begin_transaction()
+    G->>E: emit(TRANSACTION_BEGIN)
     G->>T: create transaction
     T->>S: create snapshot
 
     C->>G: create_entity()
+    G->>E: emit(ENTITY_WRITE)
     G->>T: validate & store
     T->>S: store in transaction
 
     alt Success
         C->>G: commit_transaction()
+        G->>E: emit(TRANSACTION_COMMIT)
         G->>T: commit changes
         T->>S: apply changes
     else Error
         C->>G: rollback_transaction()
+        G->>E: emit(TRANSACTION_ROLLBACK)
         G->>T: rollback changes
         T->>S: restore snapshot
     end
+```
+
+### Event System Architecture
+
+```mermaid
+flowchart TD
+    A[Graph Operation] -->|Triggers| B[Event Emission]
+    B --> C[Event Context Creation]
+    C --> D[Metadata Generation]
+    D --> E[Handler Execution]
+
+    subgraph "Event Context"
+        F[Event Type]
+        G[Operation Metadata]
+        H[Operation Data]
+    end
+
+    subgraph "Metadata"
+        I[Operation ID]
+        J[Timestamp]
+        K[Type Information]
+        L[Bulk Operation Info]
+    end
+
+    subgraph "Handlers"
+        M[Caching]
+        N[Logging]
+        O[Monitoring]
+        P[Custom Logic]
+    end
+
+    E --> M
+    E --> N
+    E --> O
+    E --> P
+
+    style A fill:#f9f
+    style B fill:#bbf
+    style C fill:#dfd
+    style D fill:#ffd
+    style E fill:#dff
 ```
 
 ### Validation Pipeline
