@@ -8,9 +8,7 @@ context implementations.
 from typing import Any
 
 from .event_system import EventSystem, GraphEvent
-from .exceptions import (
-    SchemaError,
-)
+from .exceptions import SchemaError
 from .interface import GraphContext
 from .manager import EntityManager, QueryManager, RelationManager, TransactionManager
 from .store import GraphStoreFactory
@@ -67,6 +65,30 @@ class BaseGraphContext(GraphContext):
         # Clear type registries
         self._entity_types.clear()
         self._relation_types.clear()
+
+    async def has_entity_type(self, entity_type: str) -> bool:
+        """
+        Check if an entity type exists in the schema.
+
+        Args:
+            entity_type: Name of the entity type to check
+
+        Returns:
+            True if the entity type exists, False otherwise
+        """
+        return entity_type in self._entity_types
+
+    async def has_relation_type(self, relation_type: str) -> bool:
+        """
+        Check if a relation type exists in the schema.
+
+        Args:
+            relation_type: Name of the relation type to check
+
+        Returns:
+            True if the relation type exists, False otherwise
+        """
+        return relation_type in self._relation_types
 
     async def register_entity_type(self, entity_type: EntityType) -> None:
         """

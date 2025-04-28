@@ -249,6 +249,30 @@ class CachedGraphContext(GraphContext):
 
         await self._base.cleanup()
 
+    async def has_entity_type(self, entity_type: str) -> bool:
+        """Check if an entity type exists in the schema.
+
+        Args:
+            entity_type: Name of the entity type to check
+
+        Returns:
+            True if the entity type exists, False otherwise
+        """
+        await self._initialize()
+        return await self._base.has_entity_type(entity_type)
+
+    async def has_relation_type(self, relation_type: str) -> bool:
+        """Check if a relation type exists in the schema.
+
+        Args:
+            relation_type: Name of the relation type to check
+
+        Returns:
+            True if the relation type exists, False otherwise
+        """
+        await self._initialize()
+        return await self._base.has_relation_type(relation_type)
+
     async def get_entity(self, entity_id: str) -> Entity | None:
         """Get an entity by ID.
 

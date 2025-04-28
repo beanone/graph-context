@@ -32,6 +32,38 @@ class GraphContext(ABC):
         pass
 
     @abstractmethod
+    async def has_entity_type(self, entity_type: str) -> bool:
+        """
+        Check if an entity type exists in the schema.
+
+        Args:
+            entity_type: Name of the entity type to check
+
+        Returns:
+            True if the entity type exists, False otherwise
+
+        Raises:
+            GraphContextError: If the operation fails
+        """
+        pass
+
+    @abstractmethod
+    async def has_relation_type(self, relation_type: str) -> bool:
+        """
+        Check if a relation type exists in the schema.
+
+        Args:
+            relation_type: Name of the relation type to check
+
+        Returns:
+            True if the relation type exists, False otherwise
+
+        Raises:
+            GraphContextError: If the operation fails
+        """
+        pass
+
+    @abstractmethod
     async def create_entity(self, entity_type: str, properties: dict[str, Any]) -> str:
         """
         Create a new entity in the graph.

@@ -192,7 +192,7 @@ class InMemoryGraphStore(GraphStore, GraphLike):
         # Apply property conditions if specified
         if "conditions" in query_spec:
             for condition in query_spec["conditions"]:
-                property_name = condition["property"]
+                property_name = condition["field"]
                 operator = condition["operator"]
                 value = condition["value"]
 

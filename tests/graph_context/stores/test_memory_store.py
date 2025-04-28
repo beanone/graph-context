@@ -122,7 +122,7 @@ async def test_query_entities(store: InMemoryGraphStore):
     results = await store.query(
         {
             "entity_type": "person",
-            "conditions": [{"property": "age", "operator": "gt", "value": 25}],
+            "conditions": [{"field": "age", "operator": "gt", "value": 25}],
         }
     )
     assert len(results) == 1
@@ -323,7 +323,7 @@ async def test_query_conditions_operators(store: InMemoryGraphStore):
 
     for op, (prop, val, expected_count) in operators.items():
         results = await store.query(
-            {"conditions": [{"property": prop, "operator": op, "value": val}]}
+            {"conditions": [{"field": prop, "operator": op, "value": val}]}
         )
         assert len(results) == expected_count, f"Operator {op} failed"
 
@@ -373,13 +373,13 @@ async def test_query_conditions_edge_cases(store: InMemoryGraphStore):
 
     # Test property not in entity
     results = await store.query(
-        {"conditions": [{"property": "nonexistent", "operator": "eq", "value": "any"}]}
+        {"conditions": [{"field": "nonexistent", "operator": "eq", "value": "any"}]}
     )
     assert len(results) == 0
 
     # Test invalid operator
     results = await store.query(
-        {"conditions": [{"property": "str_val", "operator": "invalid", "value": "any"}]}
+        {"conditions": [{"field": "str_val", "operator": "invalid", "value": "any"}]}
     )
     assert len(results) == 0
 
@@ -435,27 +435,27 @@ async def test_query_conditions_all_operators(store: InMemoryGraphStore):
     # Test each operator with appropriate values
     test_cases = [
         # Basic comparison operators
-        ({"property": "num_val", "operator": "eq", "value": 42}, 1),
-        ({"property": "num_val", "operator": "neq", "value": 41}, 1),
-        ({"property": "num_val", "operator": "gt", "value": 41}, 1),
-        ({"property": "num_val", "operator": "gt", "value": 42}, 0),
-        ({"property": "num_val", "operator": "gte", "value": 42}, 1),
-        ({"property": "num_val", "operator": "lt", "value": 43}, 1),
-        ({"property": "num_val", "operator": "lt", "value": 42}, 0),
-        ({"property": "num_val", "operator": "lte", "value": 42}, 1),
+        ({"field": "num_val", "operator": "eq", "value": 42}, 1),
+        ({"field": "num_val", "operator": "neq", "value": 41}, 1),
+        ({"field": "num_val", "operator": "gt", "value": 41}, 1),
+        ({"field": "num_val", "operator": "gt", "value": 42}, 0),
+        ({"field": "num_val", "operator": "gte", "value": 42}, 1),
+        ({"field": "num_val", "operator": "lt", "value": 43}, 1),
+        ({"field": "num_val", "operator": "lt", "value": 42}, 0),
+        ({"field": "num_val", "operator": "lte", "value": 42}, 1),
         # String operators
-        ({"property": "str_val", "operator": "contains", "value": "string"}, 1),
-        ({"property": "str_val", "operator": "startswith", "value": "test"}, 1),
-        ({"property": "str_val", "operator": "endswith", "value": "string"}, 1),
+        ({"field": "str_val", "operator": "contains", "value": "string"}, 1),
+        ({"field": "str_val", "operator": "startswith", "value": "test"}, 1),
+        ({"field": "str_val", "operator": "endswith", "value": "string"}, 1),
         # Edge cases
-        ({"property": "bool_val", "operator": "eq", "value": True}, 1),
-        ({"property": "none_val", "operator": "eq", "value": None}, 1),
-        ({"property": "list_val", "operator": "contains", "value": "b"}, 1),
+        ({"field": "bool_val", "operator": "eq", "value": True}, 1),
+        ({"field": "none_val", "operator": "eq", "value": None}, 1),
+        ({"field": "list_val", "operator": "contains", "value": "b"}, 1),
         # Negative cases
-        ({"property": "str_val", "operator": "contains", "value": "xyz"}, 0),
-        ({"property": "str_val", "operator": "startswith", "value": "xyz"}, 0),
-        ({"property": "str_val", "operator": "endswith", "value": "xyz"}, 0),
-        ({"property": "num_val", "operator": "invalid", "value": 42}, 0),
+        ({"field": "str_val", "operator": "contains", "value": "xyz"}, 0),
+        ({"field": "str_val", "operator": "startswith", "value": "xyz"}, 0),
+        ({"field": "str_val", "operator": "endswith", "value": "xyz"}, 0),
+        ({"field": "num_val", "operator": "invalid", "value": 42}, 0),
     ]
 
     for condition, expected_count in test_cases:
@@ -635,9 +635,9 @@ async def test_complex_query_combinations(store: InMemoryGraphStore):
         {
             "entity_type": "person",
             "conditions": [
-                {"property": "age", "operator": "gte", "value": 25},
-                {"property": "tags", "operator": "contains", "value": "developer"},
-                {"property": "active", "operator": "eq", "value": True},
+                {"field": "age", "operator": "gte", "value": 25},
+                {"field": "tags", "operator": "contains", "value": "developer"},
+                {"field": "active", "operator": "eq", "value": True},
             ],
         }
     )
@@ -648,11 +648,7 @@ async def test_complex_query_combinations(store: InMemoryGraphStore):
 
     # Test with invalid operator
     results = await store.query(
-        {
-            "conditions": [
-                {"property": "name", "operator": "invalid_op", "value": "Alice"}
-            ]
-        }
+        {"conditions": [{"field": "name", "operator": "invalid_op", "value": "Alice"}]}
     )
     assert len(results) == 0
 
