@@ -624,19 +624,24 @@ class SocialGraphContext(BaseGraphContext):
 
         # Register relation types with proper type constraints
         self.register_relation_type(RelationType(
-            name="FRIENDS_WITH",
+            name="KNOWS",
             from_types=["Person"],
             to_types=["Person"],
             properties={
                 "since": PropertyDefinition(
-                    type=PropertyType.DATETIME,
-                    required=True
+                    type=PropertyType.INTEGER,
+                    required=True,
+                    constraints={
+                        "minimum": 1900,
+                        "maximum": 2100
+                    }
                 ),
                 "strength": PropertyDefinition(
-                    type=PropertyType.STRING,
+                    type=PropertyType.FLOAT,
                     required=False,
                     constraints={
-                        "pattern": r"^(close|casual|acquaintance)$"
+                        "minimum": 0.0,
+                        "maximum": 1.0
                     }
                 )
             }
@@ -813,7 +818,7 @@ async def add_friend(
 
         # Create friend relationship with validated properties
         await ctx.create_relation(
-            relation_type="FRIENDS_WITH",
+            relation_type="KNOWS",
             from_entity=person_id,
             to_entity=friend.friend_id,
             properties={
@@ -864,7 +869,7 @@ async def get_friends(
             "entity_type": "Person",
             "conditions": [
                 {
-                    "relation_type": "FRIENDS_WITH",
+                    "relation_type": "KNOWS",
                     "from_entity": person_id,
                     "direction": "outbound"
                 }

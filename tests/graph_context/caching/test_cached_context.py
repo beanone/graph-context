@@ -1021,3 +1021,85 @@ async def test_delete_relation_success_outside_transaction(cached_context, trans
         and call.args[0].data.get("relation_id") == relation_id
         for call in handle_event_mock.call_args_list
     ), "RELATION_DELETE event not found for deleted relation"
+
+
+@pytest.mark.asyncio
+async def test_type_existence_checks(cached_context):
+    """Test type existence check methods in cached context."""
+    # Save original methods
+    original_has_entity_type = cached_context._base.has_entity_type
+    original_has_relation_type = cached_context._base.has_relation_type
+
+    try:
+        # Set up mock base context with proper return values
+        cached_context._base.has_entity_type = AsyncMock(
+            side_effect=lambda x: x == "person"
+        )
+        cached_context._base.has_relation_type = AsyncMock(
+            side_effect=lambda x: x == "knows"
+        )
+
+        # Test entity type existence
+        assert await cached_context.has_entity_type("person") is True
+        assert await cached_context.has_entity_type("invalid_type") is False
+
+        # Test relation type existence
+        assert await cached_context.has_relation_type("knows") is True
+        assert await cached_context.has_relation_type("invalid_type") is False
+
+        # Verify that the base context methods were called
+        cached_context._base.has_entity_type.assert_called()
+        cached_context._base.has_relation_type.assert_called()
+
+        # Test that caching is not used for type existence checks
+        store = cached_context._cache_manager.store_manager
+        store.get_entity_store.assert_not_called()
+        store.get_relation_store.assert_not_called()
+    finally:
+        # Restore original methods
+        cached_context._base.has_entity_type = original_has_entity_type
+        cached_context._base.has_relation_type = original_has_relation_type
+
+
+@pytest.mark.asyncio
+async def test_type_existence_checks_during_transaction(cached_context):
+    """Test type existence checks during transaction."""
+    # Save original methods
+    original_has_entity_type = cached_context._base.has_entity_type
+    original_has_relation_type = cached_context._base.has_relation_type
+
+    try:
+        # Set up mock base context with proper return values
+        cached_context._base.has_entity_type = AsyncMock(
+            side_effect=lambda x: x == "person"
+        )
+        cached_context._base.has_relation_type = AsyncMock(
+            side_effect=lambda x: x == "knows"
+        )
+
+        # Start a transaction
+        await cached_context.begin_transaction()
+
+        # Test entity type existence
+        assert await cached_context.has_entity_type("person") is True
+        assert await cached_context.has_entity_type("invalid_type") is False
+
+        # Test relation type existence
+        assert await cached_context.has_relation_type("knows") is True
+        assert await cached_context.has_relation_type("invalid_type") is False
+
+        # Verify that the base context methods were called
+        cached_context._base.has_entity_type.assert_called()
+        cached_context._base.has_relation_type.assert_called()
+
+        # Test that caching is not used for type existence checks
+        store = cached_context._cache_manager.store_manager
+        store.get_entity_store.assert_not_called()
+        store.get_relation_store.assert_not_called()
+
+        # Commit the transaction
+        await cached_context.commit_transaction()
+    finally:
+        # Restore original methods
+        cached_context._base.has_entity_type = original_has_entity_type
+        cached_context._base.has_relation_type = original_has_relation_type

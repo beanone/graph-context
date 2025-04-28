@@ -282,3 +282,88 @@ async def test_query_with_multiple_conditions():
     finally:
         # Clean up the context
         await context.cleanup()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_query_with_invalid_entity_type():
+    """Test query with an invalid entity type."""
+    # Create a fresh context for this test
+    context = BaseGraphContext()
+
+    try:
+        # Register entity type
+        person_type = "Person"
+        person_entity_type = EntityType(
+            name=person_type,
+            properties={
+                "name": PropertyDefinition(type="string", required=True),
+                "age": PropertyDefinition(type="integer", required=True),
+            },
+        )
+        await context.register_entity_type(person_entity_type)
+
+        # Create test entity
+        await context.begin_transaction()
+        try:
+            await context.create_entity(person_type, {"name": "John Doe", "age": 30})
+            await context.commit_transaction()
+        except Exception:
+            await context.rollback_transaction()
+            raise
+
+        # Test query with invalid entity type
+        query_spec = {
+            "entity_type": "InvalidType",
+            "conditions": [{"field": "name", "operator": "eq", "value": "John Doe"}],
+        }
+        results = await context.query(query_spec)
+        assert len(results) == 0  # Should return empty list for invalid type
+
+    finally:
+        # Clean up the context
+        await context.cleanup()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_type_existence_checks():
+    """Test checking if entity and relation types exist."""
+    # Create a fresh context for this test
+    context = BaseGraphContext()
+
+    try:
+        # Register entity type
+        person_type = "Person"
+        person_entity_type = EntityType(
+            name=person_type,
+            properties={
+                "name": PropertyDefinition(type="string", required=True),
+                "age": PropertyDefinition(type="integer", required=True),
+            },
+        )
+        await context.register_entity_type(person_entity_type)
+
+        # Register relation type
+        knows_type = "KNOWS"
+        knows_relation_type = RelationType(
+            name=knows_type,
+            from_types=[person_type],
+            to_types=[person_type],
+            properties={
+                "since": PropertyDefinition(type="integer", required=True),
+            },
+        )
+        await context.register_relation_type(knows_relation_type)
+
+        # Test entity type existence
+        assert await context.has_entity_type(person_type) is True
+        assert await context.has_entity_type("InvalidType") is False
+
+        # Test relation type existence
+        assert await context.has_relation_type(knows_type) is True
+        assert await context.has_relation_type("InvalidType") is False
+
+    finally:
+        # Clean up the context
+        await context.cleanup()
