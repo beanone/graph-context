@@ -1251,4 +1251,12 @@ import asyncio
 asyncio.run(process_document())
 ```
 
-Note: In this example, we use transactions to ensure data consistency. All operations that modify the graph (creating entities and relations) are wrapped in a transaction. This ensures that either all operations succeed or none of them do. The tests in the codebase don't use transactions because they use a mock context that doesn't require them, but in a real application, transactions are necessary for data consistency.
+This example shows how to:
+1. Discover entities and their types from text
+2. Dynamically register entity types as they're discovered
+3. Extract and infer properties from text
+4. Discover relations between entities
+5. Build a graph from unstructured text
+6. Query the resulting graph
+
+The example uses pattern matching for simplicity, but in a real application, you would use NLP libraries like spaCy or custom ML models for more accurate entity recognition.
