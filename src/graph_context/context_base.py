@@ -9,9 +9,9 @@ from typing import Any
 
 from .event_system import EventSystem, GraphEvent
 from .exceptions import SchemaError
+from .factory import GraphStoreFactory
 from .interface import GraphContext
 from .manager import EntityManager, QueryManager, RelationManager, TransactionManager
-from .store import GraphStoreFactory
 from .types.type_base import (
     Entity,
     EntityType,

@@ -6,7 +6,7 @@ from unittest import mock
 
 import pytest
 
-from graph_context.store import GraphStoreFactory, StoreConfig
+from graph_context.factory import GraphStoreFactory, StoreConfig
 from graph_context.stores.memory_store import InMemoryGraphStore
 
 

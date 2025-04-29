@@ -12,8 +12,8 @@ from unittest import mock
 import pytest
 
 from graph_context.context_base import BaseGraphContext
+from graph_context.factory import GraphStoreFactory
 from graph_context.interfaces.store import GraphStore
-from graph_context.store import GraphStoreFactory
 from graph_context.types.type_base import (
     Entity,
     EntityType,
@@ -186,7 +186,7 @@ class TestBaseGraphContextStoreIntegration:
 
         # Patch the GraphStoreFactory._load_config method to return our mock config
         self.load_config_patcher = mock.patch(
-            "graph_context.store.GraphStoreFactory._load_config",
+            "graph_context.factory.GraphStoreFactory._load_config",
             return_value=mock.MagicMock(type="mock", config={"test": "config"}),
         )
         self.load_config_patcher.start()
@@ -203,7 +203,9 @@ class TestBaseGraphContextStoreIntegration:
     async def test_basegraphcontext_uses_graphstorefactory(self):
         """Test that BaseGraphContext uses GraphStoreFactory.create()."""
         # Create a BaseGraphContext instance
-        with mock.patch("graph_context.store.GraphStoreFactory.create") as mock_create:
+        with mock.patch(
+            "graph_context.factory.GraphStoreFactory.create"
+        ) as mock_create:
             mock_create.return_value = MockGraphStore({"test": "config"})
             # Instantiate BaseGraphContext to test real integration and
             # delegation to the store and managers
